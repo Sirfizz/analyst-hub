@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Analyst Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;font-family:'Sora',sans-serif;background:#060d1f;color:#cbd5e1}
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:99px}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+  .fade-up{animation:fadeUp 0.35s ease forwards}
+  .slide-in{animation:slideIn 0.3s ease forwards}
+  .spin{animation:spin 0.9s linear infinite}
+  button{cursor:pointer;font-family:'Sora',sans-serif}
+  a{color:#60a5fa}
+  a:hover{text-decoration:underline}
+  textarea,input{font-family:'Sora',sans-serif;outline:none}
+  .nav-btn:hover{background:rgba(59,130,246,0.08)!important;color:#93c5fd!important}
+  .action-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+  .action-btn{transition:all 0.15s}
+  .card-hover:hover{border-color:rgba(59,130,246,0.4)!important}
+  .card-hover{transition:border-color 0.2s}
+  #app{display:flex;min-height:100vh}
+  /* Page sections */
+  .page{display:none}.page.active{display:block}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ─── CONFIG — paste your API key here ─────────────────────────────────────────
+// API key is handled automatically in the artifact environment
+
+// ─── THEME ────────────────────────────────────────────────────────────────────
+const T = {
+  bg:"#060d1f", surface:"#0c1528", surface2:"#101e35",
+  border:"rgba(56,100,180,0.2)", primary:"#3b82f6", primaryDim:"rgba(59,130,246,0.1)",
+  amber:"#f59e0b", green:"#10b981", greenDim:"rgba(16,185,129,0.1)",
+  red:"#ef4444", redDim:"rgba(239,68,68,0.1)",
+  text:"#e2e8f0", muted:"#64748b", mono:"'IBM Plex Mono',monospace"
+};
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let state = { user: null, page: "login" };
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const el = (tag, attrs={}, ...children) => {
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v]) => {
+    if(k==="style"&&typeof v==="object") Object.assign(e.style,v);
+    else if(k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(),v);
+    else e.setAttribute(k,v);
+  });
+  children.flat().forEach(c => c!=null && e.append(typeof c==="string"?document.createTextNode(c):c));
+  return e;
+};
+
+const getGreeting = () => {
+  const h = new Date().getHours();
+  if(h>=5&&h<12) return ["🌤️","Good morning"];
+  if(h>=12&&h<17) return ["☀️","Good afternoon"];
+  if(h>=17&&h<21) return ["🌇","Good evening"];
+  return ["🌙","Good night"];
+};
+
+const fmt = d => new Date(d).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+const fmtShort = d => new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
+
+// In-memory storage fallback (localStorage not available in artifacts)
+const _memStore = {};
+const safeStorage = {
+  getItem(k) { try { return localStorage.getItem(k); } catch(e) { return _memStore[k] || null; } },
+  setItem(k,v) { try { localStorage.setItem(k,v); } catch(e) { _memStore[k] = v; } }
+};
+const saveUser = name => {
+  let users = JSON.parse(safeStorage.getItem("ah_users")||"[]");
+  users = users.filter(u=>u.toLowerCase()!==name.toLowerCase());
+  users.unshift(name);
+  safeStorage.setItem("ah_users", JSON.stringify(users.slice(0,8)));
+};
+const getUsers = () => JSON.parse(safeStorage.getItem("ah_users")||"[]");
+
+// ─── SVG ICONS ────────────────────────────────────────────────────────────────
+const ICONS = {
+  home:`<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>`,
+  alert:`<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
+  globe:`<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>`,
+  stamp:`<rect x="3" y="17" width="18" height="3" rx="1"/><path d="M8 17V9a4 4 0 018 0v8"/><path d="M6 9h12"/>`,
+  download:`<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>`,
+  upload:`<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/>`,
+  check:`<polyline points="20 6 9 17 4 12"/>`,
+  x:`<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>`,
+  external:`<path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>`,
+  search:`<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`,
+  file:`<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>`,
+  arrow:`<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>`,
+  info:`<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>`,
+  pen:`<path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>`,
+  logout:`<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>`,
+  key:`<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>`
+};
+
+const icon = (name, size=18, color="currentColor") =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||""}</svg>`;
+
+// ─── API ──────────────────────────────────────────────────────────────────────
+const ADVERSE_TERMS = `launder OR fraud OR bribe OR corrupt OR arrest OR blackmail OR breach OR convict OR "court case" OR embezzle OR extort OR felony OR fined OR guilt OR illegal OR imprison OR jail OR kickback OR litigation OR mafia OR murder OR prosecute OR terrorist OR theft OR unlawful OR verdict`;
+
+const ADVERSE_SYSTEM = `You are a compliance analyst AI. The user provides a name for an adverse media check. Based on your knowledge, assess whether this person or entity has any known adverse media coverage (fraud, corruption, sanctions, criminal activity, regulatory violations, etc). Return ONLY valid JSON (no markdown, no code fences):
+{"hasAdverseMedia":true/false,"riskLevel":"HIGH"|"MEDIUM"|"LOW"|"NONE","summary":"2-3 sentence summary of findings or confirmation that no adverse media was found","sources":[{"title":"description of source","url":"https://relevant-url-if-known","snippet":"brief detail"}]}
+If you have no knowledge of adverse media for this name, return hasAdverseMedia:false and riskLevel:"NONE" with an appropriate summary.`;
+
+const MEDIA_SYSTEM = `You are a research analyst AI. Research the given name/keyword based on your knowledge. Return ONLY valid JSON (no markdown, no code fences):
+{"summary":"3-4 sentence overview of who/what this is","sentiment":"POSITIVE"|"NEUTRAL"|"NEGATIVE","highlights":["key point 1","key point 2","key point 3"],"sources":[{"title":"source description","url":"https://relevant-url-if-known","snippet":"brief detail","type":"news"|"social"|"web"}]}
+Provide the most relevant and notable information you know about this person or entity.`;
+
+async function callAPI(userMsg, systemMsg) {
+  try {
+    const res = await fetch("/api/search", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ userMsg, systemMsg })
+    });
+    if(!res.ok) {
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err.error || `API error ${res.status}`);
+    }
+    const data = await res.json();
+    const text = data.content.filter(b=>b.type==="text").map(b=>b.text).join("");
+    const clean = text.replace(/```json\n?|```\n?/g,"").trim();
+    try { return JSON.parse(clean); } catch { return {raw:text}; }
+  } catch(e) {
+    throw e;
+  }
+}
+
+// ─── GOOGLE VERIFICATION LINK BUILDER ─────────────────────────────────────────
+function buildVerifyLink(name) {
+  const searchStr = `"${name}" AND (launder OR fraud OR bribe OR corrupt OR arrest OR blackmail OR breach OR convict OR "court case" OR embezzle OR extort OR felony OR fined OR guilt OR illegal OR imprison OR jail OR kickback OR litigation OR mafia OR murder OR prosecute OR terrorist OR theft OR unlawful OR verdict)`;
+  return `https://www.google.com/search?q=${encodeURIComponent(searchStr)}`;
+}
+
+function buildMediaVerifyLink(name) {
+  return `https://www.google.com/search?q=${encodeURIComponent(name)}`;
+}
+
+// ─── PDF EXPORT (real file download, no popups) ────────────────────────────────
+function exportToPDF(results, type) {
+  const isAdverse = type === "adverse";
+  const date = fmtShort(Date.now());
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>${isAdverse?"Adverse Media":"Media"} Search Report</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;padding:40px;font-size:13px}
+.header{border-bottom:3px solid #1e3a8a;padding-bottom:18px;margin-bottom:28px}
+.header h1{font-size:22px;color:#1e3a8a;margin-bottom:4px}
+.header .meta{color:#64748b;font-size:11px}
+.result{border:1px solid #e2e8f0;border-radius:8px;margin-bottom:20px;overflow:hidden;page-break-inside:avoid}
+.result-header{padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+.adverse-h{background:#fef2f2;border-bottom:1px solid #fecaca}
+.clear-h{background:#f0fdf4;border-bottom:1px solid #bbf7d0}
+.name{font-weight:700;font-size:14px;color:#1e293b}
+.badge{padding:3px 10px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em}
+.badge-adv{background:#fee2e2;color:#dc2626}
+.badge-clr{background:#dcfce7;color:#16a34a}
+.badge-pos{background:#dcfce7;color:#16a34a}
+.badge-neg{background:#fee2e2;color:#dc2626}
+.badge-neu{background:#dbeafe;color:#1d4ed8}
+.body{padding:14px 16px}
+.summary{color:#475569;line-height:1.7;margin-bottom:12px}
+.hi{color:#475569;font-size:12px;margin-bottom:5px;padding-left:10px}
+.src-title{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:10px 0 6px}
+.src{padding:8px 12px;background:#f8fafc;border-radius:6px;margin-bottom:6px}
+.src a{color:#2563eb;font-weight:500;font-size:12px}
+.src .snip{color:#64748b;font-size:11px;margin-top:3px;line-height:1.5}
+.verify-box{margin-top:14px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px}
+.verify-box .label{font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.verify-box a{color:#2563eb;font-size:12px;font-weight:600;word-break:break-all}
+.no-adverse{padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:12px}
+.no-adverse p{color:#15803d;font-size:13px;font-weight:600;margin-bottom:4px}
+.no-adverse .detail{color:#166534;font-size:12px;font-weight:400;line-height:1.6}
+.footer{margin-top:28px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:10px;display:flex;justify-content:space-between;align-items:center}
+.credit{font-style:italic;color:#cbd5e1;font-size:9px;letter-spacing:.05em}
+</style></head><body>
+<div class="header">
+  <h1>${isAdverse?"Adverse Media Search Report":"Media Search Report"}</h1>
+  <div class="meta">Generated: ${date} &nbsp;|&nbsp; Analyst Hub &nbsp;|&nbsp; ${results.length} name(s) searched &nbsp;|&nbsp; Analyst: ${state.user||"Unknown"}</div>
+</div>
+${results.map(r=>{
+  const verifyUrl = isAdverse ? buildVerifyLink(r.name) : buildMediaVerifyLink(r.name);
+  return `
+<div class="result">
+  <div class="result-header ${r.hasAdverseMedia||r.sentiment==="NEGATIVE"?"adverse-h":"clear-h"}">
+    <span class="name">${r.name}</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      ${r.riskLevel?`<span class="badge badge-${r.riskLevel==="HIGH"?"adv":r.riskLevel==="NONE"?"clr":"neu"}">${r.riskLevel} RISK</span>`:""}
+      ${r.sentiment?`<span class="badge badge-${r.sentiment==="POSITIVE"?"pos":r.sentiment==="NEGATIVE"?"neg":"neu"}">${r.sentiment}</span>`:""}
+      ${isAdverse?`<span class="badge ${r.hasAdverseMedia?"badge-adv":"badge-clr"}">${r.hasAdverseMedia?"⚠ ADVERSE FOUND":"✓ CLEAR"}</span>`:""}
+    </div>
+  </div>
+  <div class="body">
+    ${isAdverse && !r.hasAdverseMedia && !r.error ? `
+    <div class="no-adverse">
+      <p>✓ No adverse media found for "${r.name}"</p>
+      <div class="detail">An adverse media search was conducted against public web sources using compliance-grade search terms including fraud, bribery, corruption, money laundering, sanctions violations, criminal convictions, and other risk indicators. No adverse results were identified at the time of this search.</div>
+    </div>` : ""}
+    ${r.error?`<p style="font-size:13px;color:#dc2626">${r.error}</p>`:`
+    <p class="summary">${r.summary||r.raw||"No summary available."}</p>
+    ${r.highlights?.length?`<div>${r.highlights.map(h=>`<p class="hi">› ${h}</p>`).join("")}</div>`:""}
+    ${r.sources?.length?`<div class="src-title">Sources</div>${r.sources.map(s=>`
+    <div class="src"><a href="${s.url}" target="_blank">${s.title}</a>
+    ${s.snippet?`<div class="snip">${s.snippet}</div>`:""}</div>`).join("")}`:""}`}
+    <div class="verify-box">
+      <div class="label">🔗 Verification Link</div>
+      <p style="font-size:11px;color:#475569;margin-bottom:6px">${isAdverse ? "Click below to independently verify this result on Google using the same adverse media search terms:" : "Click below to verify this result by searching for this name on Google:"}</p>
+      <a href="${verifyUrl}" target="_blank">${verifyUrl}</a>
+    </div>
+  </div>
+</div>`}).join("")}
+<div class="footer">
+  <span>Generated by Analyst Hub · All information sourced from publicly available web data.</span>
+  <span class="credit">Desk of Mafia's Creatives</span>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], {type:"text/html"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${isAdverse?"adverse_media":"media_search"}_report_${Date.now()}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+// ─── RENDER ENGINE ────────────────────────────────────────────────────────────
+function render() {
+  const app = $("app");
+  app.innerHTML = "";
+  if(state.page==="login") { app.appendChild(renderLogin()); return; }
+  const wrapper = el("div",{style:{display:"flex",minHeight:"100vh",background:T.bg,overflow:"hidden"}});
+  wrapper.appendChild(renderSidebar());
+  const main = el("main",{style:{flex:1,padding:"32px 36px",overflowY:"auto",maxHeight:"100vh"}});
+  main.appendChild(renderGreeting());
+  if(state.page==="home") main.appendChild(renderHome());
+  else if(state.page==="adverse") main.appendChild(renderAdverse());
+  else if(state.page==="media") main.appendChild(renderMedia());
+  else if(state.page==="sighted") main.appendChild(renderSighted());
+  wrapper.appendChild(main);
+  const credit = el("div",{style:{position:"fixed",bottom:"12px",right:"20px",fontSize:"10px",color:"rgba(100,116,139,0.4)",fontFamily:T.mono,letterSpacing:".05em",zIndex:10}}, "Desk of Mafia's Creatives");
+  wrapper.appendChild(credit);
+  app.appendChild(wrapper);
+}
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+function renderLogin() {
+  const recentUsers = getUsers();
+  const wrap = el("div",{style:{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}});
+
+  // BG decoration
+  wrap.innerHTML += `<div style="position:absolute;inset:0;pointer-events:none;overflow:hidden">
+    <div style="position:absolute;top:-20%;left:-10%;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.08) 0%,transparent 70%)"></div>
+    <div style="position:absolute;bottom:-20%;right:-10%;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(59,130,246,0.06) 0%,transparent 70%)"></div>
+    <svg style="position:absolute;inset:0;width:100%;height:100%;opacity:.03"><defs><pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#3b82f6" stroke-width="1"/></pattern></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>
+  </div>`;
+
+  const card = el("div",{class:"fade-up",style:{width:"100%",maxWidth:"420px",padding:"0 20px",position:"relative",zIndex:1}});
+
+  // Logo
+  const logo = el("div",{style:{textAlign:"center",marginBottom:"36px"}});
+  logo.innerHTML = `
+    <div style="width:56px;height:56px;border-radius:16px;margin:0 auto 16px;background:linear-gradient(135deg,#2563eb,#1e40af);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 32px rgba(37,99,235,0.35)">${icon("search",24,"#fff")}</div>
+    <h1 style="font-size:26px;font-weight:700;color:${T.text};letter-spacing:-0.03em;margin-bottom:6px">Analyst Hub</h1>
+    <p style="font-size:13px;color:${T.muted}">Your compliance research workspace</p>`;
+  card.appendChild(logo);
+
+  const box = el("div",{style:{background:T.surface,borderRadius:"18px",border:`1px solid ${T.border}`,padding:"28px",boxShadow:"0 24px 64px rgba(0,0,0,0.4)"}});
+  box.innerHTML = `<div style="font-size:15px;font-weight:600;color:${T.text};margin-bottom:4px">Welcome back</div>
+    <p style="font-size:12px;color:${T.muted};margin-bottom:22px">Enter your name to get started</p>`;
+
+  // Recent users
+  if(recentUsers.length>0) {
+    const rSection = el("div",{style:{marginBottom:"18px"}});
+    rSection.innerHTML = `<div style="font-size:10px;font-weight:600;color:${T.muted};letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Recent analysts</div>`;
+    const pills = el("div",{style:{display:"flex",flexWrap:"wrap",gap:"8px"}});
+    recentUsers.slice(0,5).forEach(u=>{
+      const btn = el("button",{style:{padding:"6px 14px",borderRadius:"99px",border:`1px solid ${T.border}`,background:T.surface2,color:T.text,fontSize:"12px",fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",gap:"6px",transition:"all .15s"}});
+      btn.innerHTML = `<div style="width:20px;height:20px;border-radius:50%;background:${T.primaryDim};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${T.primary}">${u.charAt(0).toUpperCase()}</div>${u}`;
+      btn.onmouseover=()=>{btn.style.borderColor=T.primary;btn.style.color=T.primary};
+      btn.onmouseout=()=>{btn.style.borderColor=T.border;btn.style.color=T.text};
+      btn.onclick=()=>doLogin(u);
+      pills.appendChild(btn);
+    });
+    rSection.appendChild(pills);
+    rSection.appendChild(el("div",{style:{height:"1px",background:T.border,margin:"18px 0"}}));
+    box.appendChild(rSection);
+  }
+
+  // Input
+  const label = el("div",{style:{marginBottom:"16px"}});
+  label.innerHTML = `<label style="font-size:11px;font-weight:600;color:${T.muted};display:block;margin-bottom:8px;text-transform:uppercase;letter-spacing:.07em">Your name</label>`;
+  const input = el("input",{type:"text",placeholder:"e.g. Sarah Johnson",style:{width:"100%",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"10px",padding:"12px 14px",color:T.text,fontSize:"14px",transition:"border-color .2s"}});
+  input.onfocus=()=>input.style.borderColor=T.primary;
+  input.onblur=()=>input.style.borderColor=T.border;
+  input.onkeydown=e=>{if(e.key==="Enter"&&input.value.trim()) doLogin(input.value.trim())};
+  label.appendChild(input);
+  box.appendChild(label);
+
+  const loginBtn = el("button",{style:{width:"100%",padding:"13px",borderRadius:"10px",border:"none",background:T.surface2,color:T.muted,fontSize:"14px",fontWeight:600,cursor:"not-allowed",transition:"all .2s",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px"}});
+  loginBtn.innerHTML = `Enter Hub ${icon("arrow",15,"currentColor")}`;
+  input.addEventListener("input",()=>{
+    if(input.value.trim()){
+      loginBtn.style.background="linear-gradient(135deg,#2563eb,#1d4ed8)";
+      loginBtn.style.color="#fff"; loginBtn.style.cursor="pointer";
+      loginBtn.style.boxShadow="0 4px 16px rgba(37,99,235,0.3)";
+    } else {
+      loginBtn.style.background=T.surface2; loginBtn.style.color=T.muted;
+      loginBtn.style.cursor="not-allowed"; loginBtn.style.boxShadow="none";
+    }
+  });
+  loginBtn.onclick=()=>{if(input.value.trim()) doLogin(input.value.trim())};
+  box.appendChild(loginBtn);
+  card.appendChild(box);
+  const footer = el("p",{style:{textAlign:"center",fontSize:"11px",color:T.muted,marginTop:"20px"}}, "Analyst Hub · Internal Tool");
+  card.appendChild(footer);
+  const credit = el("div",{style:{position:"fixed",bottom:"16px",left:"0",width:"100%",textAlign:"center",fontSize:"10px",color:"rgba(100,116,139,0.5)",fontFamily:T.mono,letterSpacing:".05em"}}, "Desk of Mafia's Creatives");
+  wrap.appendChild(credit);
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function doLogin(name) {
+  saveUser(name);
+  state.user = name;
+  state.page = "home";
+  render();
+}
+
+// ─── SIDEBAR ──────────────────────────────────────────────────────────────────
+const NAV = [
+  {id:"home",label:"Home",icon:"home"},
+  {id:"adverse",label:"Adverse Media",icon:"alert"},
+  {id:"media",label:"Media Search",icon:"globe"},
+  {id:"sighted",label:"Sighted Docs",icon:"stamp"},
+];
+
+function renderSidebar() {
+  const s = el("aside",{style:{width:"220px",flexShrink:0,minHeight:"100vh",background:T.surface,borderRight:`1px solid ${T.border}`,display:"flex",flexDirection:"column"}});
+  // Logo
+  s.innerHTML=`<div style="padding:22px 20px 20px;border-bottom:1px solid ${T.border}">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#2563eb,#1e40af);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(37,99,235,.35)">${icon("search",15,"#fff")}</div>
+      <div><div style="font-size:14px;font-weight:700;color:${T.text};letter-spacing:-.02em">Analyst Hub</div><div style="font-size:10px;color:${T.muted};font-family:${T.mono}">v1.0</div></div>
+    </div></div>`;
+  const nav = el("nav",{style:{flex:1,padding:"14px 10px"}});
+  nav.innerHTML = `<div style="font-size:9px;font-weight:600;color:${T.muted};letter-spacing:.1em;padding:4px 10px 10px;text-transform:uppercase">Features</div>`;
+  NAV.forEach(item=>{
+    const active = state.page===item.id;
+    const btn = el("button",{class:"nav-btn",style:{width:"100%",display:"flex",alignItems:"center",gap:"10px",padding:"9px 10px",borderRadius:"8px",border:"none",marginBottom:"2px",background:active?T.primaryDim:"transparent",color:active?T.primary:T.muted,fontSize:"13px",fontWeight:active?"600":"400",transition:"all .15s",borderLeft:active?`2px solid ${T.primary}`:"2px solid transparent"}});
+    btn.innerHTML = `${icon(item.icon,15,active?T.primary:T.muted)} ${item.label}`;
+    btn.onclick=()=>{state.page=item.id;render()};
+    nav.appendChild(btn);
+  });
+  s.appendChild(nav);
+  const sFooter = el("div",{style:{padding:"14px 20px",borderTop:`1px solid ${T.border}`}});
+  sFooter.innerHTML=`<div style="font-size:10px;color:${T.muted};line-height:1.7">Analyst tools,<br>powered by AI.</div>`;
+  s.appendChild(sFooter);
+  return s;
+}
+
+// ─── GREETING ─────────────────────────────────────────────────────────────────
+function renderGreeting() {
+  const [emoji, text] = getGreeting();
+  const first = state.user.split(" ")[0];
+  const g = el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"28px",padding:"16px 22px",borderRadius:"14px",background:T.surface,border:`1px solid ${T.border}`,animation:"fadeUp .4s ease both"}});
+  g.innerHTML=`
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="width:42px;height:42px;border-radius:50%;background:rgba(37,99,235,.1);border:2px solid rgba(59,130,246,.3);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:${T.primary}">${state.user.charAt(0).toUpperCase()}</div>
+      <div>
+        <div style="font-size:16px;font-weight:700;color:${T.text};letter-spacing:-.02em">${emoji} ${text}, ${first}.</div>
+        <div style="font-size:11px;color:${T.muted};margin-top:2px">${fmt(Date.now())}</div>
+      </div>
+    </div>`;
+  const signout = el("button",{style:{background:"none",border:`1px solid ${T.border}`,borderRadius:"8px",padding:"7px 14px",color:T.muted,fontSize:"12px",cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all .15s",display:"flex",alignItems:"center",gap:"6px"}});
+  signout.innerHTML=`${icon("logout",13,"currentColor")} Sign out`;
+  signout.onmouseover=()=>{signout.style.borderColor="rgba(239,68,68,.5)";signout.style.color=T.red};
+  signout.onmouseout=()=>{signout.style.borderColor=T.border;signout.style.color=T.muted};
+  signout.onclick=()=>{state.user=null;state.page="login";render()};
+  g.appendChild(signout);
+  return g;
+}
+
+// ─── HOME ─────────────────────────────────────────────────────────────────────
+function renderHome() {
+  const wrap = el("div",{class:"fade-up",style:{maxWidth:"800px"}});
+  wrap.innerHTML=`
+    <div style="margin-bottom:36px">
+      <div style="font-size:11px;font-family:${T.mono};color:${T.primary};letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Welcome to</div>
+      <h1 style="font-size:32px;font-weight:700;color:${T.text};letter-spacing:-.04em;margin-bottom:10px">Analyst Hub</h1>
+      <p style="font-size:14px;color:${T.muted};line-height:1.7;max-width:520px">Your central workspace for compliance research and document management. Built to automate repetitive work so you can focus on what matters.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+      ${[
+        {id:"adverse",icon:"alert",color:T.red,label:"Adverse Media Search",desc:"Run compliance-grade adverse media checks across multiple names and export flagged results."},
+        {id:"media",icon:"globe",color:T.primary,label:"Media Search",desc:"General and social media searches for any name or keyword with downloadable HTML reports."},
+        {id:"sighted",icon:"stamp",color:T.amber,label:"Sighted Documents",desc:"Stamp customer documents as sighted — name, date, and signature — in bulk."}
+      ].map((c,i)=>`
+      <div class="card-hover" onclick="state.page='${c.id}';render()" style="background:${T.surface};border:1px solid ${T.border};border-radius:14px;padding:22px;cursor:pointer;animation:fadeUp .35s ease ${i*.08}s both">
+        <div style="width:42px;height:42px;border-radius:11px;margin-bottom:14px;background:${c.color}18;border:1px solid ${c.color}25;display:flex;align-items:center;justify-content:center">${icon(c.icon,20,c.color)}</div>
+        <div style="font-size:14px;font-weight:600;color:${T.text};margin-bottom:8px">${c.label}</div>
+        <p style="font-size:12px;color:${T.muted};line-height:1.7;margin-bottom:16px">${c.desc}</p>
+        <div style="display:flex;align-items:center;gap:6px;color:${c.color};font-size:12px;font-weight:600">Launch ${icon("arrow",13,c.color)}</div>
+      </div>`).join("")}
+    </div>
+    <div style="margin-top:28px;padding:18px;border-radius:12px;background:${T.surface};border:1px solid ${T.border};display:flex;align-items:center;gap:14px">
+      ${icon("info",18,T.primary)}
+      <p style="font-size:12px;color:${T.muted};line-height:1.6">All searches use live web data via the Anthropic API. Reports download as HTML files you can print or save. Documents are processed in your browser — nothing is uploaded.</p>
+    </div>`;
+  return wrap;
+}
+
+// ─── ADVERSE MEDIA ────────────────────────────────────────────────────────────
+let adverseResults = [];
+
+function renderAdverse() {
+  const wrap = el("div",{class:"fade-up",style:{maxWidth:"780px"}});
+  wrap.appendChild(pageHeader("alert","Adverse Media Search","Run compliance-grade adverse media checks across multiple names at once.",T.red));
+
+  const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"22px",marginBottom:"24px"}});
+  card.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">Names / Entities</div>`;
+  const ta = el("textarea",{placeholder:"John Doe\nAcme Corporation\nJane Smith",rows:5,style:{width:"100%",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"10px",padding:"12px 14px",color:T.text,fontSize:"13px",resize:"vertical",lineHeight:1.7}});
+  card.appendChild(ta);
+
+  const row = el("div",{style:{marginTop:"10px",display:"flex",alignItems:"center",justifyContent:"space-between"}});
+  row.innerHTML=`<p style="font-size:11px;color:${T.muted}">One name per line. Searches run sequentially.</p>`;
+  const btnRow = el("div",{style:{display:"flex",gap:"8px"}});
+
+  const exportBtn = makeBtn("Export Report","download","ghost","sm",()=>exportToPDF(adverseResults,"adverse"));
+  exportBtn.style.display = adverseResults.length?"inline-flex":"none";
+  btnRow.appendChild(exportBtn);
+
+  const runBtn = makeBtn("Run Search","search","primary","md",null);
+  runBtn.onclick = async () => {
+    const names = ta.value.split("\n").map(n=>n.trim()).filter(Boolean);
+    if(!names.length) return;
+    adverseResults = [];
+    runBtn.disabled=true; runBtn.innerHTML=`<div class="spin" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%"></div> Searching…`;
+    const progWrap = $("adv-progress"); if(progWrap) progWrap.style.display="flex";
+    const resWrap = $("adv-results");
+    resWrap.innerHTML="";
+
+    for(let i=0;i<names.length;i++){
+      const name=names[i];
+      const pName=$("adv-pname"); if(pName) pName.textContent=name;
+      const pCount=$("adv-pcount"); if(pCount) pCount.textContent=`${i+1} of ${names.length}`;
+      const pBar=$("adv-pbar"); if(pBar) pBar.style.width=`${((i+1)/names.length)*100}%`;
+      try {
+        const data = await callAPI(`Search for adverse media: "${name}" AND (${ADVERSE_TERMS})`, ADVERSE_SYSTEM);
+        const r = {name,...data};
+        adverseResults.push(r);
+        resWrap.appendChild(renderAdverseResult(r));
+      } catch(e) {
+        const r={name,error:e.message,hasAdverseMedia:false};
+        adverseResults.push(r);
+        resWrap.appendChild(renderAdverseResult(r));
+      }
+    }
+    if(progWrap) progWrap.style.display="none";
+    runBtn.disabled=false; runBtn.innerHTML=`${icon("search",14,"currentColor")} Run Search`;
+    exportBtn.style.display="inline-flex";
+    // Summary
+    const sum=$("adv-summary");
+    if(sum){
+      const adv=adverseResults.filter(r=>r.hasAdverseMedia).length;
+      sum.innerHTML=`<span style="color:${T.muted};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.07em">Results — ${adverseResults.length} name${adverseResults.length>1?"s":""}</span>
+      <div style="display:flex;gap:10px"><span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${T.redDim};color:${T.red}">${adv} adverse</span><span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${T.greenDim};color:${T.green}">${adverseResults.length-adv} clear</span></div>`;
+      sum.style.display="flex";
+    }
+  };
+  btnRow.appendChild(runBtn);
+  row.appendChild(btnRow);
+  card.appendChild(row);
+
+  // Search string preview
+  const searchPreview = el("div",{style:{marginTop:"14px",padding:"10px 14px",borderRadius:"8px",background:T.surface2,border:`1px solid ${T.border}`}});
+  searchPreview.innerHTML=`<div style="font-size:10px;color:${T.muted};margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.07em">Active Search String</div>
+    <code style="font-size:10px;color:#93c5fd;font-family:${T.mono};line-height:1.6;display:block">"[Name]" AND (launder OR fraud OR bribe OR corrupt OR arrest OR blackmail OR breach OR convict OR "court case" OR embezzle…)</code>`;
+  card.appendChild(searchPreview);
+  wrap.appendChild(card);
+
+  // Progress
+  const prog = el("div",{id:"adv-progress",style:{display:"none",background:T.surface,borderRadius:"12px",border:`1px solid ${T.border}`,padding:"16px 20px",marginBottom:"20px",alignItems:"center",gap:"14px"}});
+  prog.innerHTML=`<div class="spin" style="width:18px;height:18px;border:2px solid ${T.border};border-top-color:${T.primary};border-radius:50%;flex-shrink:0"></div>
+    <div><div style="font-size:13px;font-weight:600;color:${T.text}">Searching: <span id="adv-pname" style="color:${T.primary}"></span></div><div id="adv-pcount" style="font-size:11px;color:${T.muted};margin-top:3px"></div></div>
+    <div style="margin-left:auto;width:140px;height:4px;background:${T.border};border-radius:99px"><div id="adv-pbar" style="height:100%;border-radius:99px;background:${T.primary};width:0%;transition:width .4s"></div></div>`;
+  wrap.appendChild(prog);
+
+  // Summary bar
+  const summary = el("div",{id:"adv-summary",style:{display:"none",alignItems:"center",justifyContent:"space-between",marginBottom:"14px"}});
+  wrap.appendChild(summary);
+
+  // Results container
+  const res = el("div",{id:"adv-results"});
+  wrap.appendChild(res);
+
+  // Re-render existing results if navigating back
+  if(adverseResults.length) {
+    adverseResults.forEach(r=>res.appendChild(renderAdverseResult(r)));
+    exportBtn.style.display="inline-flex";
+    summary.style.display="flex";
+    const adv=adverseResults.filter(r=>r.hasAdverseMedia).length;
+    summary.innerHTML=`<span style="color:${T.muted};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.07em">Results — ${adverseResults.length} name${adverseResults.length>1?"s":""}</span>
+      <div style="display:flex;gap:10px"><span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${T.redDim};color:${T.red}">${adv} adverse</span><span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${T.greenDim};color:${T.green}">${adverseResults.length-adv} clear</span></div>`;
+  }
+
+  return wrap;
+}
+
+function renderAdverseResult(r) {
+  const risk = r.riskLevel||(r.hasAdverseMedia?"MEDIUM":"NONE");
+  const riskColors={HIGH:T.red,MEDIUM:T.amber,LOW:"#a78bfa",NONE:T.green};
+  const verifyUrl = buildVerifyLink(r.name);
+  const d = el("div",{class:"slide-in card-hover",style:{background:T.surface,borderRadius:"12px",border:`1px solid ${r.hasAdverseMedia?T.red+"40":T.border}`,marginBottom:"14px",overflow:"hidden"}});
+  d.innerHTML=`
+    <div style="padding:14px 18px;border-bottom:1px solid ${T.border};display:flex;align-items:center;justify-content:space-between;background:${r.hasAdverseMedia?T.red+"08":T.surface2}">
+      <div style="display:flex;align-items:center;gap:10px">${icon(r.hasAdverseMedia?"alert":"check",15,r.hasAdverseMedia?T.red:T.green)}<span style="font-weight:600;color:${T.text};font-size:14px">${r.name}</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${riskColors[risk]}18;color:${riskColors[risk]}">⬤ ${risk} RISK</span>
+        <span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${r.hasAdverseMedia?T.redDim:T.greenDim};color:${r.hasAdverseMedia?T.red:T.green}">${r.hasAdverseMedia?"ADVERSE FOUND":"CLEAR"}</span>
+      </div>
+    </div>
+    <div style="padding:14px 18px">
+      ${!r.hasAdverseMedia && !r.error ? `
+      <div style="padding:12px 16px;background:${T.greenDim};border:1px solid ${T.green}30;border-radius:8px;margin-bottom:14px">
+        <p style="font-size:13px;font-weight:600;color:${T.green};margin-bottom:4px">✓ No adverse media found for "${r.name}"</p>
+        <p style="font-size:11px;color:${T.muted};line-height:1.6">Search conducted against public web sources using compliance-grade adverse media search terms.</p>
+      </div>` : ""}
+      ${r.error?`<p style="font-size:13px;color:${T.red}">${r.error}</p>`:`
+      <p style="font-size:13px;color:${T.muted};line-height:1.7;margin-bottom:14px">${r.summary||r.raw||""}</p>
+      ${r.sources?.length?`<div style="font-size:11px;font-weight:600;color:${T.muted};letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Sources</div>
+      ${r.sources.map(s=>`<div style="padding:10px 14px;border-radius:8px;background:${T.surface2};border:1px solid ${T.border};margin-bottom:8px">
+        <a href="${s.url}" target="_blank" style="font-size:13px;font-weight:500;display:flex;gap:6px;align-items:center">${s.title} ${icon("external",11,T.primary)}</a>
+        ${s.snippet?`<p style="font-size:11px;color:${T.muted};margin-top:4px;line-height:1.5">${s.snippet}</p>`:""}</div>`).join("")}`:""}
+      `}
+      <div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:${T.primaryDim};border:1px solid ${T.primary}25">
+        <div style="font-size:10px;font-weight:600;color:${T.primary};text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">🔗 Verification Link</div>
+        <p style="font-size:11px;color:${T.muted};margin-bottom:6px">Click to verify this result independently on Google:</p>
+        <a href="${verifyUrl}" target="_blank" style="font-size:11px;color:${T.primary};word-break:break-all;display:flex;align-items:center;gap:4px">${icon("external",11,T.primary)} Open Google Verification Search</a>
+      </div>
+    </div>`;
+  return d;
+}
+
+// ─── MEDIA SEARCH ─────────────────────────────────────────────────────────────
+let mediaResults = [];
+
+function renderMedia() {
+  const wrap = el("div",{class:"fade-up",style:{maxWidth:"780px"}});
+  wrap.appendChild(pageHeader("globe","Media Search","General and social media searches for names, entities, or keywords.",T.primary));
+
+  const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"22px",marginBottom:"24px"}});
+  card.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">Search Terms</div>`;
+  const ta = el("textarea",{placeholder:"John Doe\nAcme Corp LinkedIn\nJane Smith Twitter",rows:5,style:{width:"100%",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"10px",padding:"12px 14px",color:T.text,fontSize:"13px",resize:"vertical",lineHeight:1.7}});
+  card.appendChild(ta);
+
+  const row = el("div",{style:{marginTop:"10px",display:"flex",alignItems:"center",justifyContent:"space-between"}});
+  row.innerHTML=`<p style="font-size:11px;color:${T.muted}">One name or keyword per line. Includes news and social media.</p>`;
+  const btnRow = el("div",{style:{display:"flex",gap:"8px"}});
+
+  const exportBtn = makeBtn("Export Report","download","ghost","sm",()=>exportToPDF(mediaResults,"media"));
+  exportBtn.style.display = mediaResults.length?"inline-flex":"none";
+  btnRow.appendChild(exportBtn);
+
+  const runBtn = makeBtn("Search","search","primary","md",null);
+  runBtn.onclick = async () => {
+    const terms = ta.value.split("\n").map(n=>n.trim()).filter(Boolean);
+    if(!terms.length) return;
+    mediaResults=[];
+    runBtn.disabled=true; runBtn.innerHTML=`<div class="spin" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%"></div> Searching…`;
+    const progWrap=$("med-progress"); if(progWrap) progWrap.style.display="flex";
+    const resWrap=$("med-results"); resWrap.innerHTML="";
+
+    for(let i=0;i<terms.length;i++){
+      const name=terms[i];
+      const pName=$("med-pname"); if(pName) pName.textContent=name;
+      const pCount=$("med-pcount"); if(pCount) pCount.textContent=`${i+1} of ${terms.length}`;
+      const pBar=$("med-pbar"); if(pBar) pBar.style.width=`${((i+1)/terms.length)*100}%`;
+      try {
+        const data = await callAPI(`Search the web and social media for: ${name}`, MEDIA_SYSTEM);
+        const r={name,...data};
+        mediaResults.push(r);
+        resWrap.appendChild(renderMediaResult(r));
+      } catch(e) {
+        const r={name,error:e.message};
+        mediaResults.push(r);
+        resWrap.appendChild(renderMediaResult(r));
+      }
+    }
+    if(progWrap) progWrap.style.display="none";
+    runBtn.disabled=false; runBtn.innerHTML=`${icon("search",14,"currentColor")} Search`;
+    exportBtn.style.display="inline-flex";
+  };
+  btnRow.appendChild(runBtn);
+  row.appendChild(btnRow);
+  card.appendChild(row);
+  wrap.appendChild(card);
+
+  const prog = el("div",{id:"med-progress",style:{display:"none",background:T.surface,borderRadius:"12px",border:`1px solid ${T.border}`,padding:"16px 20px",marginBottom:"20px",alignItems:"center",gap:"14px"}});
+  prog.innerHTML=`<div class="spin" style="width:18px;height:18px;border:2px solid ${T.border};border-top-color:${T.primary};border-radius:50%;flex-shrink:0"></div>
+    <div><div style="font-size:13px;font-weight:600;color:${T.text}">Searching: <span id="med-pname" style="color:${T.primary}"></span></div><div id="med-pcount" style="font-size:11px;color:${T.muted};margin-top:3px"></div></div>
+    <div style="margin-left:auto;width:140px;height:4px;background:${T.border};border-radius:99px"><div id="med-pbar" style="height:100%;border-radius:99px;background:${T.primary};width:0%;transition:width .4s"></div></div>`;
+  wrap.appendChild(prog);
+
+  const res = el("div",{id:"med-results"});
+  if(mediaResults.length) { mediaResults.forEach(r=>res.appendChild(renderMediaResult(r))); exportBtn.style.display="inline-flex"; }
+  wrap.appendChild(res);
+  return wrap;
+}
+
+function renderMediaResult(r) {
+  const sentColors={POSITIVE:T.green,NEUTRAL:T.primary,NEGATIVE:T.red};
+  const sentBg={POSITIVE:T.greenDim,NEUTRAL:T.primaryDim,NEGATIVE:T.redDim};
+  const verifyUrl = buildMediaVerifyLink(r.name);
+  const d = el("div",{class:"slide-in card-hover",style:{background:T.surface,borderRadius:"12px",border:`1px solid ${T.border}`,marginBottom:"14px",overflow:"hidden"}});
+  d.innerHTML=`
+    <div style="padding:14px 18px;border-bottom:1px solid ${T.border};display:flex;align-items:center;justify-content:space-between;background:${T.surface2}">
+      <div style="display:flex;align-items:center;gap:10px">${icon("search",15,T.primary)}<span style="font-weight:600;color:${T.text};font-size:14px">${r.name}</span></div>
+      ${r.sentiment?`<span style="padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:${sentBg[r.sentiment]||T.primaryDim};color:${sentColors[r.sentiment]||T.primary}">${r.sentiment}</span>`:""}
+    </div>
+    <div style="padding:14px 18px">
+      ${r.error?`<p style="font-size:13px;color:${T.red}">${r.error}</p>`:`
+      <p style="font-size:13px;color:${T.muted};line-height:1.7;margin-bottom:14px">${r.summary||r.raw||""}</p>
+      ${r.highlights?.length?`<div style="margin-bottom:14px">${r.highlights.map(h=>`<div style="display:flex;gap:8px;font-size:12px;color:${T.muted};margin-bottom:6px"><span style="color:${T.primary}">›</span>${h}</div>`).join("")}</div>`:""}
+      ${r.sources?.length?`<div style="font-size:11px;font-weight:600;color:${T.muted};letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Sources</div>
+      ${r.sources.map(s=>`<div style="padding:10px 14px;border-radius:8px;background:${T.surface2};border:1px solid ${T.border};margin-bottom:8px">
+        <a href="${s.url}" target="_blank" style="font-size:13px;font-weight:500;display:flex;gap:5px;align-items:center">${s.title} ${icon("external",11,T.primary)}</a>
+        ${s.snippet?`<p style="font-size:11px;color:${T.muted};margin-top:4px;line-height:1.5">${s.snippet}</p>`:""}</div>`).join("")}`:""}
+      `}
+      <div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:${T.primaryDim};border:1px solid ${T.primary}25">
+        <div style="font-size:10px;font-weight:600;color:${T.primary};text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">🔗 Verification Link</div>
+        <p style="font-size:11px;color:${T.muted};margin-bottom:6px">Click to verify this result on Google:</p>
+        <a href="${verifyUrl}" target="_blank" style="font-size:11px;color:${T.primary};word-break:break-all;display:flex;align-items:center;gap:4px">${icon("external",11,T.primary)} Open Google Search for "${r.name}"</a>
+      </div>
+    </div>`;
+  return d;
+}
+
+// ─── SIGHTED DOCUMENTS ────────────────────────────────────────────────────────
+let sightedState = { step:1, signerName:"", date:fmtShort(Date.now()), sigFormat:"typed-date", signatureData:null, uploadedSig:null, files:[], processed:[] };
+
+function renderSighted() {
+  const s = sightedState;
+  const wrap = el("div",{class:"fade-up",style:{maxWidth:"780px"}});
+  wrap.appendChild(pageHeader("stamp","Sighted Documents","Stamp customer documents as sighted with your name, date and signature — in bulk.",T.amber));
+
+  // Step indicator
+  const steps=["Configure Stamp","Upload Documents","Download"];
+  const stepBar = el("div",{style:{display:"flex",alignItems:"center",gap:0,marginBottom:"28px"}});
+  steps.forEach((label,i)=>{
+    const done=s.step>i+1, active=s.step===i+1;
+    const dot = el("div",{style:{display:"flex",alignItems:"center",gap:"8px",cursor:done?"pointer":"default"}});
+    dot.onclick=()=>{if(done){sightedState.step=i+1;render()}};
+    dot.innerHTML=`<div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:${done?T.green:active?T.amber:T.surface2};color:${done||active?"#fff":T.muted};border:2px solid ${active?T.amber:"transparent"};flex-shrink:0">${done?icon("check",13,"#fff"):i+1}</div>
+      <span style="font-size:12px;font-weight:${active?600:400};color:${active?T.text:T.muted};white-space:nowrap">${label}</span>`;
+    stepBar.appendChild(dot);
+    if(i<2) stepBar.appendChild(el("div",{style:{flex:1,height:"1px",background:T.border,margin:"0 12px"}}));
+  });
+  wrap.appendChild(stepBar);
+
+  if(s.step===1) wrap.appendChild(renderSightedStep1());
+  else if(s.step===2) wrap.appendChild(renderSightedStep2());
+  else wrap.appendChild(renderSightedStep3());
+  return wrap;
+}
+
+function renderSightedStep1() {
+  const s = sightedState;
+  const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"24px"}});
+
+  const grid = el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"20px",marginBottom:"22px"}});
+  // Name
+  const nameWrap = el("div");
+  nameWrap.innerHTML=`<label style="font-size:12px;font-weight:600;color:${T.muted};display:block;margin-bottom:8px;text-transform:uppercase;letter-spacing:.07em">Analyst Name</label>`;
+  const nameIn = el("input",{type:"text",placeholder:"Your full name",value:s.signerName,style:{width:"100%",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"8px",padding:"10px 14px",color:T.text,fontSize:"13px"}});
+  nameIn.oninput=()=>{sightedState.signerName=nameIn.value;updatePreview()};
+  nameWrap.appendChild(nameIn);
+  // Date
+  const dateWrap = el("div");
+  dateWrap.innerHTML=`<label style="font-size:12px;font-weight:600;color:${T.muted};display:block;margin-bottom:8px;text-transform:uppercase;letter-spacing:.07em">Date</label>`;
+  const dateIn = el("input",{type:"text",value:s.date,style:{width:"100%",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"8px",padding:"10px 14px",color:T.text,fontSize:"13px"}});
+  dateIn.oninput=()=>{sightedState.date=dateIn.value;updatePreview()};
+  dateWrap.appendChild(dateIn);
+  grid.appendChild(nameWrap); grid.appendChild(dateWrap);
+  card.appendChild(grid);
+  const divider = el("div",{style:{height:"1px",background:T.border,margin:"0 0 20px"}});
+  card.appendChild(divider);
+  const sigLabel = el("div",{style:{fontSize:"12px",fontWeight:600,color:T.muted,marginBottom:"16px",textTransform:"uppercase",letterSpacing:".07em"}},"Signature Format");
+  card.appendChild(sigLabel);
+
+  const SIG_OPTS=[
+    {id:"typed-only",label:"Typed name only",desc:"Name in italic script"},
+    {id:"typed-date",label:"Typed name + date",desc:"Name and auto-filled date"},
+    {id:"draw",label:"Draw signature",desc:"Freehand on screen"},
+    {id:"upload",label:"Upload signature",desc:"Upload an image"},
+  ];
+
+  const optGrid = el("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"20px"}});
+  SIG_OPTS.forEach(opt=>{
+    const active=s.sigFormat===opt.id;
+    const b = el("div",{style:{padding:"12px 16px",borderRadius:"10px",cursor:"pointer",border:`1px solid ${active?T.amber:T.border}`,background:active?"rgba(245,158,11,0.06)":T.surface2,transition:"all .15s"}});
+    b.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+      <div style="width:16px;height:16px;border-radius:50%;border:2px solid ${active?T.amber:T.border};display:flex;align-items:center;justify-content:center">
+        ${active?`<div style="width:8px;height:8px;border-radius:50%;background:${T.amber}"></div>`:""}
+      </div>
+      <span style="font-size:13px;font-weight:600;color:${T.text}">${opt.label}</span></div>
+      <p style="font-size:11px;color:${T.muted};padding-left:24px">${opt.desc}</p>`;
+    b.onclick=()=>{sightedState.sigFormat=opt.id;render()};
+    optGrid.appendChild(b);
+  });
+  card.appendChild(optGrid);
+
+  // Draw canvas
+  if(s.sigFormat==="draw") {
+    const drawWrap = el("div",{style:{marginBottom:"20px"}});
+    drawWrap.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">Draw Signature</div>`;
+    const canvas = el("canvas",{width:460,height:110,style:{width:"100%",border:`1px solid ${T.border}`,borderRadius:"8px",background:"#fff",cursor:"crosshair",touchAction:"none",display:"block"}});
+    setupCanvas(canvas);
+    drawWrap.appendChild(canvas);
+    const clr = makeBtn("Clear","x","ghost","sm",()=>{canvas.getContext("2d").clearRect(0,0,460,110);sightedState.signatureData=null});
+    clr.style.marginTop="8px";
+    drawWrap.appendChild(clr);
+    if(s.signatureData) {
+      const capMsg = el("p",{style:{fontSize:"11px",color:T.green,marginTop:"6px"}},"✓ Signature captured");
+      drawWrap.appendChild(capMsg);
+    }
+    card.appendChild(drawWrap);
+  }
+
+  // Upload sig
+  if(s.sigFormat==="upload") {
+    const upWrap = el("div",{style:{marginBottom:"20px"}});
+    upWrap.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">Upload Signature</div>`;
+    const fileIn = el("input",{type:"file",accept:"image/*",style:{display:"none"}});
+    fileIn.onchange=e=>{
+      const f=e.target.files[0]; if(!f) return;
+      const r=new FileReader(); r.onload=ev=>{sightedState.uploadedSig=ev.target.result;render()}; r.readAsDataURL(f);
+    };
+    const upBtn = makeBtn("Choose Image","upload","ghost","sm",()=>fileIn.click());
+    upWrap.appendChild(fileIn); upWrap.appendChild(upBtn);
+    if(s.uploadedSig) {
+      const preview = el("div",{style:{marginTop:"10px",display:"flex",alignItems:"center",gap:"10px"}});
+      preview.innerHTML=`<img src="${s.uploadedSig}" style="height:40px;object-fit:contain;background:#fff;border-radius:6px;padding:4px;border:1px solid ${T.border}"><p style="font-size:11px;color:${T.green}">✓ Signature uploaded</p>`;
+      upWrap.appendChild(preview);
+    }
+    card.appendChild(upWrap);
+  }
+
+  // Preview
+  const previewBox = el("div",{id:"stamp-preview",style:{padding:"16px",borderRadius:"10px",background:T.surface2,border:`1px solid ${T.border}`,marginBottom:"20px"}});
+  previewBox.innerHTML=`<div style="font-size:11px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">Stamp Preview</div>`;
+  const stamp = el("div",{style:{display:"inline-block",border:"2px solid #1e3a8a",borderRadius:"6px",padding:"10px 16px",background:"#fff",borderLeft:"5px solid #1e3a8a"}});
+  stamp.innerHTML=`<div style="font-weight:700;color:#1e3a8a;font-size:13px;margin-bottom:6px">SIGHTED</div>
+    <div style="height:1px;background:#e2e8f0;margin-bottom:6px"></div>
+    <div style="font-size:12px;color:#1e293b;margin-bottom:3px">By: ${s.signerName||"Analyst Name"}</div>
+    ${s.sigFormat!=="typed-only"?`<div style="font-size:12px;color:#1e293b;margin-bottom:4px">Date: ${s.date}</div>`:""}
+    ${s.sigFormat==="typed-only"?`<div style="font-style:italic;color:#1e3a8a;font-size:13px">${s.signerName||"Signature"}</div>`:""}
+    ${s.sigFormat==="upload"&&s.uploadedSig?`<img src="${s.uploadedSig}" style="height:28px;object-fit:contain">`:
+      s.sigFormat==="draw"&&s.signatureData?`<img src="${s.signatureData}" style="height:28px;object-fit:contain;background:#fff">`:
+      (s.sigFormat==="draw"||s.sigFormat==="upload")?`<div style="font-size:11px;color:#94a3b8;font-style:italic">[ signature here ]</div>`:""}`;
+  previewBox.appendChild(stamp);
+  card.appendChild(previewBox);
+
+  const cont = makeBtn("Continue to Upload","arrow","primary","md",()=>{
+    if(!sightedState.signerName.trim()) return alert("Please enter your name.");
+    sightedState.step=2; render();
+  });
+  card.appendChild(cont);
+  return card;
+}
+
+function setupCanvas(canvas) {
+  const ctx = canvas.getContext("2d");
+  ctx.strokeStyle="#1e3a8a"; ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.lineJoin="round";
+  let drawing=false;
+  const getPos=(e)=>{
+    const rect=canvas.getBoundingClientRect();
+    const sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+    const cx=e.touches?e.touches[0].clientX:e.clientX;
+    const cy=e.touches?e.touches[0].clientY:e.clientY;
+    return{x:(cx-rect.left)*sx,y:(cy-rect.top)*sy};
+  };
+  canvas.onmousedown=canvas.ontouchstart=(e)=>{e.preventDefault();drawing=true;const p=getPos(e);ctx.beginPath();ctx.moveTo(p.x,p.y)};
+  canvas.onmousemove=canvas.ontouchmove=(e)=>{e.preventDefault();if(!drawing)return;const p=getPos(e);ctx.lineTo(p.x,p.y);ctx.stroke()};
+  canvas.onmouseup=canvas.ontouchend=(e)=>{e.preventDefault();drawing=false;sightedState.signatureData=canvas.toDataURL("image/png")};
+}
+
+function renderSightedStep2() {
+  const s = sightedState;
+  const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"24px"}});
+
+  const fileIn = el("input",{type:"file",multiple:true,accept:"image/*,application/pdf",style:{display:"none"},id:"sighted-file-input"});
+  fileIn.onchange=e=>{
+    const valid=Array.from(e.target.files).filter(f=>f.type.startsWith("image/")||f.type==="application/pdf");
+    sightedState.files=[...sightedState.files,...valid];
+    render();
+  };
+  card.appendChild(fileIn);
+
+  // Drop zone
+  const dropZone = el("div",{style:{border:`2px dashed ${T.border}`,borderRadius:"12px",padding:"32px 20px",textAlign:"center",cursor:"pointer",marginBottom:"20px",background:T.surface2,transition:"all .2s"}});
+  dropZone.innerHTML=`${icon("upload",28,T.muted)}<div style="font-size:14px;font-weight:600;color:${T.text};margin:10px 0 4px">Drop files here or click to browse</div><p style="font-size:12px;color:${T.muted}">Supports JPG, PNG, PDF — multiple files accepted</p>`;
+  dropZone.onclick=()=>fileIn.click();
+  dropZone.ondragover=e=>{e.preventDefault();dropZone.style.borderColor=T.amber;dropZone.style.background="rgba(245,158,11,0.04)"};
+  dropZone.ondragleave=()=>{dropZone.style.borderColor=T.border;dropZone.style.background=T.surface2};
+  dropZone.ondrop=e=>{
+    e.preventDefault();dropZone.style.borderColor=T.border;dropZone.style.background=T.surface2;
+    const valid=Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/")||f.type==="application/pdf");
+    sightedState.files=[...sightedState.files,...valid]; render();
+  };
+  card.appendChild(dropZone);
+
+  // File list
+  if(s.files.length) {
+    const flist = el("div",{style:{marginBottom:"20px"}});
+    flist.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">${s.files.length} file${s.files.length>1?"s":""} selected</div>`;
+    s.files.forEach((f,i)=>{
+      const row = el("div",{style:{display:"flex",alignItems:"center",gap:"10px",padding:"10px 14px",borderRadius:"8px",background:T.surface2,border:`1px solid ${T.border}`,marginBottom:"8px"}});
+      row.innerHTML=`${icon("file",15,T.primary)}<span style="flex:1;font-size:13px;color:${T.text}">${f.name}</span><span style="font-size:11px;color:${T.muted};font-family:${T.mono}">${(f.size/1024).toFixed(0)} KB</span>`;
+      const rmBtn = el("button",{style:{background:"none",border:"none",color:T.muted,padding:"4px",cursor:"pointer"}});
+      rmBtn.innerHTML=icon("x",14,T.muted);
+      rmBtn.onclick=()=>{sightedState.files.splice(i,1);render()};
+      row.appendChild(rmBtn);
+      flist.appendChild(row);
+    });
+    card.appendChild(flist);
+  }
+
+  const btnRow = el("div",{style:{display:"flex",gap:"10px"}});
+  btnRow.appendChild(makeBtn("← Back","","ghost","md",()=>{sightedState.step=1;render()}));
+
+  const applyBtn = makeBtn(`Apply Stamps to ${s.files.length} File${s.files.length>1?"s":""}`, "stamp", "primary", "md", null);
+  if(!s.files.length) { applyBtn.disabled=true; applyBtn.style.opacity="0.5"; }
+  applyBtn.onclick = async () => {
+    if(!s.files.length) return;
+    applyBtn.disabled=true;
+    applyBtn.innerHTML=`<div class="spin" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%"></div> Applying…`;
+    sightedState.processed = await processDocuments(s.files, s);
+    sightedState.step=3; render();
+  };
+  btnRow.appendChild(applyBtn);
+  card.appendChild(btnRow);
+  return card;
+}
+
+async function processDocuments(files, s) {
+  const results=[];
+  for(const file of files) {
+    try {
+      if(file.type.startsWith("image/")) {
+        const dataUrl = await new Promise(resolve=>{
+          const img=new Image(), url=URL.createObjectURL(file);
+          img.onload=async()=>{
+            const canvas=document.createElement("canvas");
+            canvas.width=img.width; canvas.height=img.height;
+            canvas.getContext("2d").drawImage(img,0,0);
+            await drawStamp(canvas,s);
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL("image/png"));
+          }; img.src=url;
+        });
+        results.push({name:file.name.replace(/\.[^.]+$/,"")+"_sighted.png",dataUrl,type:"image"});
+      } else if(file.type==="application/pdf") {
+        if(!window.pdfjsLib) {
+          await new Promise((res,rej)=>{
+            const script=document.createElement("script");
+            script.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+            script.onload=res; script.onerror=rej; document.head.appendChild(script);
+          });
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        }
+        const ab=await file.arrayBuffer();
+        const pdf=await window.pdfjsLib.getDocument({data:ab}).promise;
+        const pageDataUrls=[];
+        for(let p=1;p<=pdf.numPages;p++){
+          const page=await pdf.getPage(p);
+          const vp=page.getViewport({scale:1.8});
+          const canvas=document.createElement("canvas");
+          canvas.width=vp.width; canvas.height=vp.height;
+          await page.render({canvasContext:canvas.getContext("2d"),viewport:vp}).promise;
+          await drawStamp(canvas,s);
+          pageDataUrls.push(canvas.toDataURL("image/png"));
+        }
+        results.push({name:file.name.replace(/\.pdf$/,"")+"_sighted",dataUrls:pageDataUrls,type:"pdf",pages:pdf.numPages});
+      }
+    } catch(e){ results.push({name:file.name,error:e.message}); }
+  }
+  return results;
+}
+
+async function drawStamp(canvas, s) {
+  const ctx=canvas.getContext("2d");
+  const w=canvas.width, h=canvas.height;
+  const boxW=Math.min(360,w*0.45), boxH=s.sigFormat==="typed-only"?80:110;
+  const x=w-boxW-20, y=h-boxH-20;
+  ctx.shadowColor="rgba(0,0,0,0.15)"; ctx.shadowBlur=12; ctx.shadowOffsetX=2; ctx.shadowOffsetY=2;
+  ctx.fillStyle="rgba(255,255,255,0.96)"; ctx.fillRect(x,y,boxW,boxH);
+  ctx.shadowColor="transparent";
+  ctx.strokeStyle="#1e3a8a"; ctx.lineWidth=2; ctx.strokeRect(x,y,boxW,boxH);
+  ctx.fillStyle="#1e3a8a"; ctx.fillRect(x,y,5,boxH);
+  const fs=Math.min(14,boxW/20);
+  ctx.fillStyle="#1e3a8a"; ctx.font=`bold ${fs}px Arial`; ctx.fillText("SIGHTED",x+14,y+22);
+  ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x+14,y+30); ctx.lineTo(x+boxW-14,y+30); ctx.stroke();
+  ctx.fillStyle="#1e293b"; ctx.font=`${Math.min(12,boxW/22)}px Arial`;
+  ctx.fillText(`By: ${s.signerName||"N/A"}`,x+14,y+46);
+  if(s.sigFormat!=="typed-only") ctx.fillText(`Date: ${s.date}`,x+14,y+62);
+  const sigData = s.sigFormat==="draw"?s.signatureData:s.sigFormat==="upload"?s.uploadedSig:null;
+  if(sigData) {
+    await new Promise(resolve=>{
+      const img=new Image(); img.onload=()=>{ctx.drawImage(img,x+14,y+70,boxW-28,32);resolve()}; img.onerror=resolve; img.src=sigData;
+    });
+  } else if(s.sigFormat==="typed-only") {
+    ctx.font=`italic ${Math.min(13,boxW/22)}px Georgia`; ctx.fillStyle="#1e3a8a"; ctx.fillText(s.signerName||"",x+14,y+65);
+  }
+}
+
+function renderSightedStep3() {
+  const s = sightedState;
+  const wrap = el("div");
+  const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"24px",marginBottom:"16px"}});
+
+  const hdr = el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"20px"}});
+  hdr.innerHTML=`<div style="display:flex;align-items:center;gap:10px">${icon("check",18,T.green)}<span style="font-size:15px;font-weight:600;color:${T.text}">${s.processed.filter(p=>!p.error).length} document${s.processed.length>1?"s":""} stamped</span></div>`;
+  const btnRow2 = el("div",{style:{display:"flex",gap:"8px"}});
+  btnRow2.appendChild(makeBtn("Start Over","","ghost","md",()=>{sightedState={step:1,signerName:"",date:fmtShort(Date.now()),sigFormat:"typed-date",signatureData:null,uploadedSig:null,files:[],processed:[]};render()}));
+  btnRow2.appendChild(makeBtn("Download All","download","success","md",()=>s.processed.forEach(p=>{
+    if(p.error) return;
+    if(p.type==="image") dlFile(p.dataUrl,p.name);
+    else p.dataUrls.forEach((url,i)=>dlFile(url,`${p.name}_page${i+1}.png`));
+  })));
+  hdr.appendChild(btnRow2);
+  card.appendChild(hdr);
+
+  s.processed.forEach(p=>{
+    const row = el("div",{style:{padding:"14px 16px",borderRadius:"10px",background:T.surface2,border:`1px solid ${p.error?T.red+"40":T.border}`,marginBottom:"10px"}});
+    if(p.error) {
+      row.innerHTML=`<div style="display:flex;gap:8px;align-items:center">${icon("alert",14,T.red)}<span style="font-size:13px;color:${T.red}">${p.name}: ${p.error}</span></div>`;
+    } else {
+      const content = el("div",{style:{display:"flex",alignItems:"flex-start",gap:"14px"}});
+      const thumb = el("div",{style:{flexShrink:0,width:"70px",height:"80px",borderRadius:"6px",overflow:"hidden",border:`1px solid ${T.border}`,background:"#fff"}});
+      const img = el("img",{style:{width:"100%",height:"100%",objectFit:"cover"}});
+      img.src = p.type==="image"?p.dataUrl:p.dataUrls[0];
+      thumb.appendChild(img);
+      const info = el("div",{style:{flex:1}});
+      info.innerHTML=`<div style="font-size:13px;font-weight:600;color:${T.text};margin-bottom:4px">${p.name}</div>
+        <div style="font-size:11px;color:${T.muted};margin-bottom:10px">${p.type==="pdf"?`${p.pages} page${p.pages>1?"s":""} — exported as PNG images`:"Stamped image"}</div>`;
+      if(p.type==="image") {
+        info.appendChild(makeBtn("Download","download","ghost","sm",()=>dlFile(p.dataUrl,p.name)));
+      } else {
+        const pgRow=el("div",{style:{display:"flex",gap:"8px",flexWrap:"wrap"}});
+        p.dataUrls.forEach((url,pi)=>{ pgRow.appendChild(makeBtn(`Page ${pi+1}`,"download","ghost","sm",()=>dlFile(url,`${p.name}_page${pi+1}.png`))); });
+        info.appendChild(pgRow);
+      }
+      content.appendChild(thumb); content.appendChild(info);
+      row.appendChild(content);
+    }
+    card.appendChild(row);
+  });
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function dlFile(dataUrl, filename) {
+  const a=document.createElement("a"); a.href=dataUrl; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+// ─── SHARED UI HELPERS ────────────────────────────────────────────────────────
+function makeBtn(label, iconName, variant="primary", size="md", onClick) {
+  const variants={
+    primary:{background:T.primary,color:"#fff",border:"none"},
+    ghost:{background:"transparent",color:T.muted,border:`1px solid ${T.border}`},
+    success:{background:T.greenDim,color:T.green,border:`1px solid ${T.green}33`},
+    danger:{background:T.redDim,color:T.red,border:`1px solid ${T.red}33`},
+  };
+  const sizes={sm:{padding:"6px 12px",fontSize:"12px"},md:{padding:"9px 18px",fontSize:"13px"},lg:{padding:"12px 24px",fontSize:"14px"}};
+  const btn = el("button",{class:"action-btn",style:{display:"inline-flex",alignItems:"center",gap:"7px",borderRadius:"8px",fontWeight:500,...variants[variant],...sizes[size]}});
+  btn.innerHTML=`${iconName?icon(iconName,14,"currentColor"):""}${label}`;
+  if(onClick) btn.onclick=onClick;
+  return btn;
+}
+
+function pageHeader(iconName, title, subtitle, color=T.primary) {
+  const wrap = el("div",{style:{marginBottom:"28px"}});
+  wrap.innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <div style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:${color}18;border:1px solid ${color}30">${icon(iconName,18,color)}</div>
+      <h1 style="font-size:22px;font-weight:700;color:${T.text};letter-spacing:-.03em">${title}</h1>
+    </div>
+    <p style="font-size:13px;color:${T.muted};padding-left:50px">${subtitle}</p>`;
+  return wrap;
+}
+
+function updatePreview() {
+  const stamp=$("stamp-preview");
+  if(stamp) { const s=sightedState; stamp.querySelector("div:last-child").innerHTML=
+    `<div style="display:inline-block;border:2px solid #1e3a8a;border-radius:6px;padding:10px 16px;background:#fff;border-left:5px solid #1e3a8a">
+      <div style="font-weight:700;color:#1e3a8a;font-size:13px;margin-bottom:6px">SIGHTED</div>
+      <div style="height:1px;background:#e2e8f0;margin-bottom:6px"></div>
+      <div style="font-size:12px;color:#1e293b;margin-bottom:3px">By: ${s.signerName||"Analyst Name"}</div>
+      ${s.sigFormat!=="typed-only"?`<div style="font-size:12px;color:#1e293b;margin-bottom:4px">Date: ${s.date}</div>`:""}
+    </div>`; }
+}
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
