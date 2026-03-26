@@ -186,19 +186,6 @@ async function callAPI(userMsg, systemMsg, maxTokens, provider="claude") {
   }
 }
 
-// ─── AI SELECTOR ─────────────────────────────────────────────────────────────
-let selectedAI = "claude";
-
-function makeAISelector(onChange) {
-  const wrap = el("div",{style:{display:"flex",alignItems:"center",gap:"6px"}});
-  wrap.innerHTML=`<span style="font-size:10px;color:${T.muted};font-weight:600;text-transform:uppercase;letter-spacing:.05em">AI:</span>`;
-  const sel = el("select",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"6px",padding:"5px 8px",color:T.text,fontSize:"12px",fontFamily:"'Sora',sans-serif",cursor:"pointer",outline:"none"}});
-  sel.innerHTML=`<option value="claude" ${selectedAI==="claude"?"selected":""}>Claude (paid)</option><option value="gemini" ${selectedAI==="gemini"?"selected":""}>Gemini (free)</option>`;
-  sel.onchange=()=>{selectedAI=sel.value;if(onChange)onChange(sel.value)};
-  wrap.appendChild(sel);
-  return wrap;
-}
-
 const NEWS_SYSTEM = `You are an elite news research analyst. Search the web for the latest news on the given topic. Find recent articles from multiple sources and provide a comprehensive briefing.
 
 Return ONLY valid JSON (no markdown, no code fences, no extra text):
