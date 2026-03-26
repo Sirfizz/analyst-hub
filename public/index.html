@@ -162,7 +162,9 @@ Return ONLY valid JSON (no markdown, no code fences, no extra text before or aft
 
 async function callAPI(userMsg, systemMsg, maxTokens, provider="claude") {
   try {
-    const endpoint = provider === "gemini" ? "/api/gemini" : "/api/search";
+    let endpoint = "/api/search";
+    if(provider === "gemini") endpoint = "/api/gemini";
+    if(provider === "openai") endpoint = "/api/openai";
     const res = await fetch(endpoint, {
       method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -1192,16 +1194,24 @@ let selectedAI = "claude";
 function makeAISelector() {
   const wrap = el("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"14px"}});
   wrap.innerHTML=`<span style="font-size:11px;font-weight:600;color:${T.muted};text-transform:uppercase;letter-spacing:.07em">AI Engine</span>`;
-  const pills = el("div",{style:{display:"flex",gap:"6px"}});
+  const pills = el("div",{style:{display:"flex",gap:"6px",flexWrap:"wrap"}});
 
-  // Claude - active/selectable
+  // Claude
   const claudeActive = selectedAI==="claude";
   const claudeBtn = el("button",{style:{padding:"6px 14px",borderRadius:"20px",border:`1px solid ${claudeActive?T.primary:T.border}`,background:claudeActive?T.primaryDim:"transparent",color:claudeActive?T.primary:T.muted,fontSize:"12px",fontWeight:claudeActive?600:400,cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all .15s",display:"flex",alignItems:"center",gap:"6px"}});
   claudeBtn.innerHTML=`<div style="width:8px;height:8px;border-radius:50%;background:${T.primary}"></div>Claude`;
   claudeBtn.onclick=()=>{selectedAI="claude";render()};
   pills.appendChild(claudeBtn);
 
-  // Copilot - greyed out, coming soon
+  // ChatGPT
+  const gptActive = selectedAI==="openai";
+  const gptColor = "#10a37f";
+  const gptBtn = el("button",{style:{padding:"6px 14px",borderRadius:"20px",border:`1px solid ${gptActive?gptColor:T.border}`,background:gptActive?gptColor+"18":"transparent",color:gptActive?gptColor:T.muted,fontSize:"12px",fontWeight:gptActive?600:400,cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all .15s",display:"flex",alignItems:"center",gap:"6px"}});
+  gptBtn.innerHTML=`<div style="width:8px;height:8px;border-radius:50%;background:${gptColor}"></div>ChatGPT`;
+  gptBtn.onclick=()=>{selectedAI="openai";render()};
+  pills.appendChild(gptBtn);
+
+  // Copilot - greyed out
   const copilotBtn = el("button",{style:{padding:"6px 14px",borderRadius:"20px",border:`1px solid ${T.border}`,background:"transparent",color:"#475569",fontSize:"12px",fontWeight:400,cursor:"not-allowed",fontFamily:"'Sora',sans-serif",opacity:"0.5",display:"flex",alignItems:"center",gap:"6px",pointerEvents:"none"}});
   copilotBtn.innerHTML=`<div style="width:8px;height:8px;border-radius:50%;background:#475569"></div>Copilot <span style="font-size:9px;color:#475569;font-weight:600;background:rgba(71,85,105,0.2);padding:1px 6px;border-radius:4px;margin-left:2px">Coming Soon</span>`;
   pills.appendChild(copilotBtn);
