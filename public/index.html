@@ -463,7 +463,7 @@ function renderHome() {
       ${[
         {id:"adverse",icon:"alert",color:T.red,label:"Adverse Media Search",desc:"Run compliance-grade adverse media checks across multiple names and export flagged results."},
         {id:"media",icon:"globe",color:T.primary,label:"Media Search",desc:"General and social media searches for any name or keyword with downloadable PDF reports."},
-        {id:"news",icon:"news",color:"#8b5cf6",label:"Fetch News",desc:"Research any topic — get the latest news from multiple sources. Powered by Gemini (free)."},
+        {id:"news",icon:"news",color:"#8b5cf6",label:"Fetch News",desc:"Research any topic — get the latest news from multiple sources, broken down for easy reading."},
         {id:"sighted",icon:"stamp",color:T.amber,label:"Sight Documents",desc:"Stamp customer documents as sighted — name, date, and signature — in bulk."}
       ].map((c,i)=>`
       <div class="card-hover" onclick="state.page='${c.id}';render()" style="background:${T.surface};border:1px solid ${T.border};border-radius:14px;padding:20px;cursor:pointer;animation:fadeUp .35s ease ${i*.08}s both">
@@ -712,12 +712,12 @@ function renderMediaResult(r) {
   return d;
 }
 
-// ─── FETCH NEWS (Gemini only — free) ─────────────────────────────────────────
+// ─── FETCH NEWS ──────────────────────────────────────────────────────────────
 let newsResults = [];
 
 function renderNews() {
   const wrap = el("div",{class:"fade-up",style:{maxWidth:"780px"}});
-  wrap.appendChild(pageHeader("news","Fetch News","Research any topic — get the latest news from multiple sources. Powered by Gemini (free).","#8b5cf6"));
+  wrap.appendChild(pageHeader("news","Fetch News","Research any topic — get the latest news from multiple sources, broken down for easy reading.","#8b5cf6"));
 
   const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"22px",marginBottom:"24px"}});
   card.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">News Topics</div>`;
@@ -727,10 +727,6 @@ function renderNews() {
   const row = el("div",{style:{marginTop:"10px",display:"flex",alignItems:"center",justifyContent:"space-between"}});
   row.innerHTML=`<p style="font-size:11px;color:${T.muted}">One topic per line. Be specific — include sector, region, and timeframe.</p>`;
   const btnRow = el("div",{style:{display:"flex",gap:"8px",alignItems:"center"}});
-  const gemBadge = el("div",{style:{padding:"4px 10px",borderRadius:"6px",background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.2)",fontSize:"10px",fontWeight:600,color:"#8b5cf6"}});
-  gemBadge.textContent="Gemini (free)";
-  btnRow.appendChild(gemBadge);
-
   const runBtn = makeBtn("Fetch News","search","primary","md",null);
   runBtn.style.background="#8b5cf6";
   runBtn.onclick = async () => {
@@ -747,7 +743,7 @@ function renderNews() {
       const pCount=$("news-pcount"); if(pCount) pCount.textContent=`${i+1} of ${topics.length}`;
       const pBar=$("news-pbar"); if(pBar) pBar.style.width=`${((i+1)/topics.length)*100}%`;
       try {
-        const data = await callAPI(`Conduct thorough research on: ${topic}. Search multiple news sources. Find at least 5 relevant articles. Provide detailed summaries, key points, and source links.`, NEWS_SYSTEM, 2000, "gemini");
+        const data = await callAPI(`Conduct thorough research on: ${topic}. Search multiple news sources. Find at least 5 relevant articles. Provide detailed summaries, key points, and source links.`, NEWS_SYSTEM, 2000, "claude");
         const r={topic,...data};
         newsResults.push(r);
         resWrap.appendChild(renderNewsResult(r));
@@ -1196,18 +1192,20 @@ let selectedAI = "claude";
 function makeAISelector() {
   const wrap = el("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"14px"}});
   wrap.innerHTML=`<span style="font-size:11px;font-weight:600;color:${T.muted};text-transform:uppercase;letter-spacing:.07em">AI Engine</span>`;
-  const opts = [
-    {id:"claude",label:"Claude",color:T.primary,desc:"Best quality · Paid"},
-    {id:"gemini",label:"Gemini",color:T.green,desc:"Free tier · Good"}
-  ];
   const pills = el("div",{style:{display:"flex",gap:"6px"}});
-  opts.forEach(o=>{
-    const active = selectedAI===o.id;
-    const btn = el("button",{style:{padding:"6px 14px",borderRadius:"20px",border:`1px solid ${active?o.color:T.border}`,background:active?o.color+"18":"transparent",color:active?o.color:T.muted,fontSize:"12px",fontWeight:active?600:400,cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all .15s",display:"flex",alignItems:"center",gap:"6px"}});
-    btn.innerHTML=`<div style="width:8px;height:8px;border-radius:50%;background:${o.color}"></div>${o.label} <span style="font-size:9px;color:${T.muted};font-weight:400">${o.desc}</span>`;
-    btn.onclick=()=>{selectedAI=o.id;render()};
-    pills.appendChild(btn);
-  });
+
+  // Claude - active/selectable
+  const claudeActive = selectedAI==="claude";
+  const claudeBtn = el("button",{style:{padding:"6px 14px",borderRadius:"20px",border:`1px solid ${claudeActive?T.primary:T.border}`,background:claudeActive?T.primaryDim:"transparent",color:claudeActive?T.primary:T.muted,fontSize:"12px",fontWeight:claudeActive?600:400,cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all .15s",display:"flex",alignItems:"center",gap:"6px"}});
+  claudeBtn.innerHTML=`<div style="width:8px;height:8px;border-radius:50%;background:${T.primary}"></div>Claude`;
+  claudeBtn.onclick=()=>{selectedAI="claude";render()};
+  pills.appendChild(claudeBtn);
+
+  // Copilot - greyed out, coming soon
+  const copilotBtn = el("button",{style:{padding:"6px 14px",borderRadius:"20px",border:`1px solid ${T.border}`,background:"transparent",color:"#475569",fontSize:"12px",fontWeight:400,cursor:"not-allowed",fontFamily:"'Sora',sans-serif",opacity:"0.5",display:"flex",alignItems:"center",gap:"6px",pointerEvents:"none"}});
+  copilotBtn.innerHTML=`<div style="width:8px;height:8px;border-radius:50%;background:#475569"></div>Copilot <span style="font-size:9px;color:#475569;font-weight:600;background:rgba(71,85,105,0.2);padding:1px 6px;border-radius:4px;margin-left:2px">Coming Soon</span>`;
+  pills.appendChild(copilotBtn);
+
   wrap.appendChild(pills);
   return wrap;
 }
