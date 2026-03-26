@@ -29,6 +29,34 @@
   #app{display:flex;min-height:100vh}
   /* Page sections */
   .page{display:none}.page.active{display:block}
+  /* Mobile responsive */
+  @media(max-width:768px){
+    #app{flex-direction:column!important}
+    aside{width:100%!important;min-height:auto!important;flex-direction:row!important;border-right:none!important;border-bottom:1px solid rgba(56,100,180,0.2)!important;overflow-x:auto}
+    aside>div:first-child{display:none!important}
+    aside nav{padding:6px 8px!important;display:flex!important;gap:2px;flex-wrap:nowrap;overflow-x:auto}
+    aside nav>div:first-child{display:none!important}
+    aside nav button{white-space:nowrap;padding:8px 12px!important;font-size:12px!important;border-left:none!important;border-bottom:2px solid transparent}
+    aside>div:last-child{display:none!important}
+    main{padding:14px 16px!important;max-height:none!important}
+    .greet-bar{padding:10px 14px!important;margin-bottom:12px!important;flex-wrap:wrap;gap:8px}
+    .greet-bar>div:first-child{gap:10px!important}
+    .greet-bar .avatar{width:34px!important;height:34px!important;font-size:14px!important}
+    .greet-bar .name{font-size:14px!important}
+    .home-grid{grid-template-columns:1fr!important;gap:12px!important}
+    .home-grid>div{padding:16px!important}
+    .page-hdr h1{font-size:18px!important}
+    .page-hdr{margin-bottom:16px!important}
+    .card-pad{padding:16px!important}
+    textarea{font-size:14px!important;-webkit-text-size-adjust:100%}
+    input{font-size:14px!important;-webkit-text-size-adjust:100%}
+    .result-badges{flex-wrap:wrap;gap:4px!important}
+    .sig-grid{grid-template-columns:1fr!important}
+  }
+  @media(max-width:480px){
+    .home-title{font-size:24px!important}
+    .result-header-wrap{flex-direction:column!important;align-items:flex-start!important;gap:8px!important}
+  }
 </style>
 </head>
 <body>
@@ -105,7 +133,8 @@ const ICONS = {
   info:`<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>`,
   pen:`<path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>`,
   logout:`<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>`,
-  key:`<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>`
+  key:`<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>`,
+  news:`<path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="18" y2="6"/><line x1="10" y1="10" x2="18" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/>`
 };
 
 const icon = (name, size=18, color="currentColor") =>
@@ -114,13 +143,27 @@ const icon = (name, size=18, color="currentColor") =>
 // ─── API ──────────────────────────────────────────────────────────────────────
 const ADVERSE_TERMS = `launder OR fraud OR bribe OR corrupt OR arrest OR blackmail OR breach OR convict OR "court case" OR embezzle OR extort OR felony OR fined OR guilt OR illegal OR imprison OR jail OR kickback OR litigation OR mafia OR murder OR prosecute OR terrorist OR theft OR unlawful OR verdict`;
 
-const ADVERSE_SYSTEM = `You are a compliance analyst AI. The user provides a name for an adverse media check. Based on your knowledge, assess whether this person or entity has any known adverse media coverage (fraud, corruption, sanctions, criminal activity, regulatory violations, etc). Return ONLY valid JSON (no markdown, no code fences):
-{"hasAdverseMedia":true/false,"riskLevel":"HIGH"|"MEDIUM"|"LOW"|"NONE","summary":"2-3 sentence summary of findings or confirmation that no adverse media was found","sources":[{"title":"description of source","url":"https://relevant-url-if-known","snippet":"brief detail"}]}
-If you have no knowledge of adverse media for this name, return hasAdverseMedia:false and riskLevel:"NONE" with an appropriate summary.`;
+const ADVERSE_SYSTEM = `You are a compliance analyst AI. The user provides a name for an adverse media check. Search the web and assess whether this person or entity has any known adverse media coverage related to: fraud, corruption, sanctions, criminal activity, regulatory violations, money laundering, terrorism financing, bribery, or similar.
 
-const MEDIA_SYSTEM = `You are a research analyst AI. Research the given name/keyword based on your knowledge. Return ONLY valid JSON (no markdown, no code fences):
-{"summary":"3-4 sentence overview of who/what this is","sentiment":"POSITIVE"|"NEUTRAL"|"NEGATIVE","highlights":["key point 1","key point 2","key point 3"],"sources":[{"title":"source description","url":"https://relevant-url-if-known","snippet":"brief detail","type":"news"|"social"|"web"}]}
-Provide the most relevant and notable information you know about this person or entity.`;
+CRITICAL RULES:
+- If you find ANY adverse information, you MUST set hasAdverseMedia to true and riskLevel to HIGH or MEDIUM. Your summary MUST describe the adverse findings.
+- If you find NO adverse information, you MUST set hasAdverseMedia to false and riskLevel to NONE. Your summary MUST confirm no adverse media was found. Do NOT describe any adverse findings if hasAdverseMedia is false.
+- The summary MUST be consistent with hasAdverseMedia. NEVER say "clear" while describing adverse findings.
+
+Return ONLY valid JSON (no markdown, no code fences, no extra text before or after):
+{"hasAdverseMedia":true,"riskLevel":"HIGH","summary":"[Person] faces allegations of [specific issues]. [Brief details of findings].","sources":[{"title":"Source name","url":"https://url","snippet":"brief detail"}]}
+OR
+{"hasAdverseMedia":false,"riskLevel":"NONE","summary":"No adverse media coverage was found for [Person]. The search covered fraud, corruption, sanctions, criminal activity, and regulatory violations.","sources":[]}`;
+
+const MEDIA_SYSTEM = `You are a research analyst AI. Search the web for the given name/keyword. Provide a factual overview.
+
+Return ONLY valid JSON (no markdown, no code fences, no extra text before or after):
+{"summary":"3-4 sentence factual overview","sentiment":"POSITIVE"|"NEUTRAL"|"NEGATIVE","highlights":["key finding 1","key finding 2","key finding 3"],"sources":[{"title":"source name","url":"https://url","snippet":"brief detail","type":"news"|"social"|"web"}]}`;
+
+const NEWS_SYSTEM = `You are a news research analyst. Search the web for the latest news on the given topic. Find recent articles from multiple sources and provide a comprehensive briefing.
+
+Return ONLY valid JSON (no markdown, no code fences, no extra text before or after):
+{"topic":"the topic searched","period":"time period covered","articles":[{"title":"article headline","source":"publication name","url":"https://url","date":"publication date","summary":"2-3 sentence summary of the article","keyPoints":["point 1","point 2"]}],"overview":"3-4 sentence overall summary of the news landscape on this topic"}`;
 
 async function callAPI(userMsg, systemMsg) {
   try {
@@ -136,7 +179,12 @@ async function callAPI(userMsg, systemMsg) {
     const data = await res.json();
     const text = data.content.filter(b=>b.type==="text").map(b=>b.text).join("");
     const clean = text.replace(/```json\n?|```\n?/g,"").trim();
-    try { return JSON.parse(clean); } catch { return {raw:text}; }
+    try { return JSON.parse(clean); } catch {
+      // Try to extract JSON from mixed text
+      const jsonMatch = clean.match(/\{[\s\S]*\}/);
+      if(jsonMatch) { try { return JSON.parse(jsonMatch[0]); } catch {} }
+      return {summary:clean.replace(/[\{\}\[\]"]/g,"").substring(0,500)};
+    }
   } catch(e) {
     throw e;
   }
@@ -152,45 +200,50 @@ function buildMediaVerifyLink(name) {
   return `https://www.google.com/search?q=${encodeURIComponent(name)}`;
 }
 
-// ─── PDF EXPORT (real file download, no popups) ────────────────────────────────
+// ─── PDF EXPORT (opens print dialog for real PDF) ────────────────────────────
 function exportToPDF(results, type) {
   const isAdverse = type === "adverse";
   const date = fmtShort(Date.now());
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>${isAdverse?"Adverse Media":"Media"} Search Report</title>
 <style>
+@media print{@page{margin:20mm 15mm}body{padding:0!important}}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;padding:40px;font-size:13px}
-.header{border-bottom:3px solid #1e3a8a;padding-bottom:18px;margin-bottom:28px}
-.header h1{font-size:22px;color:#1e3a8a;margin-bottom:4px}
-.header .meta{color:#64748b;font-size:11px}
-.result{border:1px solid #e2e8f0;border-radius:8px;margin-bottom:20px;overflow:hidden;page-break-inside:avoid}
-.result-header{padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;padding:30px;font-size:12px}
+.header{border-bottom:3px solid #1e3a8a;padding-bottom:14px;margin-bottom:20px}
+.header h1{font-size:20px;color:#1e3a8a;margin-bottom:3px}
+.header .meta{color:#64748b;font-size:10px}
+.result{border:1px solid #e2e8f0;border-radius:6px;margin-bottom:14px;overflow:hidden;page-break-inside:avoid}
+.result-header{padding:8px 12px;display:flex;justify-content:space-between;align-items:center}
 .adverse-h{background:#fef2f2;border-bottom:1px solid #fecaca}
 .clear-h{background:#f0fdf4;border-bottom:1px solid #bbf7d0}
-.name{font-weight:700;font-size:14px;color:#1e293b}
-.badge{padding:3px 10px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em}
+.name{font-weight:700;font-size:13px;color:#1e293b}
+.badge{padding:2px 8px;border-radius:99px;font-size:9px;font-weight:700;letter-spacing:.04em}
 .badge-adv{background:#fee2e2;color:#dc2626}
 .badge-clr{background:#dcfce7;color:#16a34a}
 .badge-pos{background:#dcfce7;color:#16a34a}
 .badge-neg{background:#fee2e2;color:#dc2626}
 .badge-neu{background:#dbeafe;color:#1d4ed8}
-.body{padding:14px 16px}
-.summary{color:#475569;line-height:1.7;margin-bottom:12px}
-.hi{color:#475569;font-size:12px;margin-bottom:5px;padding-left:10px}
-.src-title{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:10px 0 6px}
-.src{padding:8px 12px;background:#f8fafc;border-radius:6px;margin-bottom:6px}
-.src a{color:#2563eb;font-weight:500;font-size:12px}
-.src .snip{color:#64748b;font-size:11px;margin-top:3px;line-height:1.5}
-.verify-box{margin-top:14px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px}
-.verify-box .label{font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
-.verify-box a{color:#2563eb;font-size:12px;font-weight:600;word-break:break-all}
-.no-adverse{padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:12px}
-.no-adverse p{color:#15803d;font-size:13px;font-weight:600;margin-bottom:4px}
-.no-adverse .detail{color:#166534;font-size:12px;font-weight:400;line-height:1.6}
-.footer{margin-top:28px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:10px;display:flex;justify-content:space-between;align-items:center}
-.credit{font-style:italic;color:#cbd5e1;font-size:9px;letter-spacing:.05em}
+.body{padding:10px 12px}
+.summary{color:#475569;line-height:1.6;margin-bottom:8px;font-size:11px}
+.hi{color:#475569;font-size:11px;margin-bottom:3px;padding-left:8px}
+.src-title{font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:8px 0 4px}
+.src{padding:6px 10px;background:#f8fafc;border-radius:4px;margin-bottom:4px}
+.src a{color:#2563eb;font-weight:500;font-size:11px}
+.src .snip{color:#64748b;font-size:10px;margin-top:2px;line-height:1.4}
+.verify-box{margin-top:10px;padding:8px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px}
+.verify-box .label{font-size:9px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.verify-box a{color:#2563eb;font-size:10px;font-weight:600;word-break:break-all}
+.no-adverse{padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;margin-bottom:8px}
+.no-adverse p{color:#15803d;font-size:12px;font-weight:600;margin-bottom:3px}
+.no-adverse .detail{color:#166534;font-size:10px;font-weight:400;line-height:1.5}
+.footer{margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:9px;display:flex;justify-content:space-between;align-items:center}
+.credit{font-style:italic;color:#cbd5e1;font-size:8px;letter-spacing:.05em}
+.print-btn{position:fixed;top:10px;right:10px;padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;z-index:999;font-family:'Segoe UI',sans-serif}
+.print-btn:hover{background:#1d4ed8}
+@media print{.print-btn{display:none!important}}
 </style></head><body>
+<button class="print-btn" onclick="window.print()">📄 Save as PDF</button>
 <div class="header">
   <h1>${isAdverse?"Adverse Media Search Report":"Media Search Report"}</h1>
   <div class="meta">Generated: ${date} &nbsp;|&nbsp; Analyst Hub &nbsp;|&nbsp; ${results.length} name(s) searched &nbsp;|&nbsp; Analyst: ${state.user||"Unknown"}</div>
@@ -201,7 +254,7 @@ ${results.map(r=>{
 <div class="result">
   <div class="result-header ${r.hasAdverseMedia||r.sentiment==="NEGATIVE"?"adverse-h":"clear-h"}">
     <span class="name">${r.name}</span>
-    <div style="display:flex;gap:8px;align-items:center">
+    <div style="display:flex;gap:6px;align-items:center">
       ${r.riskLevel?`<span class="badge badge-${r.riskLevel==="HIGH"?"adv":r.riskLevel==="NONE"?"clr":"neu"}">${r.riskLevel} RISK</span>`:""}
       ${r.sentiment?`<span class="badge badge-${r.sentiment==="POSITIVE"?"pos":r.sentiment==="NEGATIVE"?"neg":"neu"}">${r.sentiment}</span>`:""}
       ${isAdverse?`<span class="badge ${r.hasAdverseMedia?"badge-adv":"badge-clr"}">${r.hasAdverseMedia?"⚠ ADVERSE FOUND":"✓ CLEAR"}</span>`:""}
@@ -213,15 +266,15 @@ ${results.map(r=>{
       <p>✓ No adverse media found for "${r.name}"</p>
       <div class="detail">An adverse media search was conducted against public web sources using compliance-grade search terms including fraud, bribery, corruption, money laundering, sanctions violations, criminal convictions, and other risk indicators. No adverse results were identified at the time of this search.</div>
     </div>` : ""}
-    ${r.error?`<p style="font-size:13px;color:#dc2626">${r.error}</p>`:`
-    <p class="summary">${r.summary||r.raw||"No summary available."}</p>
+    ${r.error?`<p style="font-size:12px;color:#dc2626">${r.error}</p>`:`
+    <p class="summary">${r.summary||""}</p>
     ${r.highlights?.length?`<div>${r.highlights.map(h=>`<p class="hi">› ${h}</p>`).join("")}</div>`:""}
     ${r.sources?.length?`<div class="src-title">Sources</div>${r.sources.map(s=>`
     <div class="src"><a href="${s.url}" target="_blank">${s.title}</a>
     ${s.snippet?`<div class="snip">${s.snippet}</div>`:""}</div>`).join("")}`:""}`}
     <div class="verify-box">
       <div class="label">🔗 Verification Link</div>
-      <p style="font-size:11px;color:#475569;margin-bottom:6px">${isAdverse ? "Click below to independently verify this result on Google using the same adverse media search terms:" : "Click below to verify this result by searching for this name on Google:"}</p>
+      <p style="font-size:10px;color:#475569;margin-bottom:4px">${isAdverse ? "Verify on Google using adverse media search terms:" : "Verify by searching this name on Google:"}</p>
       <a href="${verifyUrl}" target="_blank">${verifyUrl}</a>
     </div>
   </div>
@@ -230,17 +283,15 @@ ${results.map(r=>{
   <span>Generated by Analyst Hub · All information sourced from publicly available web data.</span>
   <span class="credit">Desk of Mafia's Creatives</span>
 </div>
+<script>
+// Auto-prompt print dialog after a short delay
+setTimeout(()=>{window.print()},800);
+</script>
 </body></html>`;
 
-  const blob = new Blob([html], {type:"text/html"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${isAdverse?"adverse_media":"media_search"}_report_${Date.now()}.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  const w = window.open("","_blank","width=900,height=700");
+  w.document.write(html);
+  w.document.close();
 }
 
 // ─── RENDER ENGINE ────────────────────────────────────────────────────────────
@@ -250,11 +301,12 @@ function render() {
   if(state.page==="login") { app.appendChild(renderLogin()); return; }
   const wrapper = el("div",{style:{display:"flex",minHeight:"100vh",background:T.bg,overflow:"hidden"}});
   wrapper.appendChild(renderSidebar());
-  const main = el("main",{style:{flex:1,padding:"32px 36px",overflowY:"auto",maxHeight:"100vh"}});
+  const main = el("main",{style:{flex:1,padding:"20px 28px",overflowY:"auto",maxHeight:"100vh"}});
   main.appendChild(renderGreeting());
   if(state.page==="home") main.appendChild(renderHome());
   else if(state.page==="adverse") main.appendChild(renderAdverse());
   else if(state.page==="media") main.appendChild(renderMedia());
+  else if(state.page==="news") main.appendChild(renderNews());
   else if(state.page==="sighted") main.appendChild(renderSighted());
   wrapper.appendChild(main);
   const credit = el("div",{style:{position:"fixed",bottom:"12px",right:"20px",fontSize:"10px",color:"rgba(100,116,139,0.4)",fontFamily:T.mono,letterSpacing:".05em",zIndex:10}}, "Desk of Mafia's Creatives");
@@ -277,11 +329,11 @@ function renderLogin() {
   const card = el("div",{class:"fade-up",style:{width:"100%",maxWidth:"420px",padding:"0 20px",position:"relative",zIndex:1}});
 
   // Logo
-  const logo = el("div",{style:{textAlign:"center",marginBottom:"36px"}});
+  const logo = el("div",{style:{textAlign:"center",marginBottom:"24px"}});
   logo.innerHTML = `
     <div style="width:56px;height:56px;border-radius:16px;margin:0 auto 16px;background:linear-gradient(135deg,#2563eb,#1e40af);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 32px rgba(37,99,235,0.35)">${icon("search",24,"#fff")}</div>
     <h1 style="font-size:26px;font-weight:700;color:${T.text};letter-spacing:-0.03em;margin-bottom:6px">Analyst Hub</h1>
-    <p style="font-size:13px;color:${T.muted}">Your compliance research workspace</p>`;
+    <p style="font-size:13px;color:${T.muted}">Your workplace partner</p>`;
   card.appendChild(logo);
 
   const box = el("div",{style:{background:T.surface,borderRadius:"18px",border:`1px solid ${T.border}`,padding:"28px",boxShadow:"0 24px 64px rgba(0,0,0,0.4)"}});
@@ -351,7 +403,8 @@ const NAV = [
   {id:"home",label:"Home",icon:"home"},
   {id:"adverse",label:"Adverse Media",icon:"alert"},
   {id:"media",label:"Media Search",icon:"globe"},
-  {id:"sighted",label:"Sighted Docs",icon:"stamp"},
+  {id:"news",label:"Fetch News",icon:"news"},
+  {id:"sighted",label:"Sight Documents",icon:"stamp"},
 ];
 
 function renderSidebar() {
@@ -382,7 +435,7 @@ function renderSidebar() {
 function renderGreeting() {
   const [emoji, text] = getGreeting();
   const first = state.user.split(" ")[0];
-  const g = el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"28px",padding:"16px 22px",borderRadius:"14px",background:T.surface,border:`1px solid ${T.border}`,animation:"fadeUp .4s ease both"}});
+  const g = el("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"18px",padding:"12px 18px",borderRadius:"12px",background:T.surface,border:`1px solid ${T.border}`,animation:"fadeUp .4s ease both"}});
   g.innerHTML=`
     <div style="display:flex;align-items:center;gap:14px">
       <div style="width:42px;height:42px;border-radius:50%;background:rgba(37,99,235,.1);border:2px solid rgba(59,130,246,.3);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:${T.primary}">${state.user.charAt(0).toUpperCase()}</div>
@@ -404,18 +457,19 @@ function renderGreeting() {
 function renderHome() {
   const wrap = el("div",{class:"fade-up",style:{maxWidth:"800px"}});
   wrap.innerHTML=`
-    <div style="margin-bottom:36px">
-      <div style="font-size:11px;font-family:${T.mono};color:${T.primary};letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">Welcome to</div>
-      <h1 style="font-size:32px;font-weight:700;color:${T.text};letter-spacing:-.04em;margin-bottom:10px">Analyst Hub</h1>
-      <p style="font-size:14px;color:${T.muted};line-height:1.7;max-width:520px">Your central workspace for compliance research and document management. Built to automate repetitive work so you can focus on what matters.</p>
+    <div style="margin-bottom:22px">
+      <div style="font-size:10px;font-family:${T.mono};color:${T.primary};letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">Welcome to</div>
+      <h1 class="home-title" style="font-size:28px;font-weight:700;color:${T.text};letter-spacing:-.04em;margin-bottom:6px">Analyst Hub</h1>
+      <p style="font-size:13px;color:${T.muted};line-height:1.6;max-width:520px">Your central workspace for compliance research and document management.</p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px" class="home-grid">
       ${[
         {id:"adverse",icon:"alert",color:T.red,label:"Adverse Media Search",desc:"Run compliance-grade adverse media checks across multiple names and export flagged results."},
-        {id:"media",icon:"globe",color:T.primary,label:"Media Search",desc:"General and social media searches for any name or keyword with downloadable HTML reports."},
-        {id:"sighted",icon:"stamp",color:T.amber,label:"Sighted Documents",desc:"Stamp customer documents as sighted — name, date, and signature — in bulk."}
+        {id:"media",icon:"globe",color:T.primary,label:"Media Search",desc:"General and social media searches for any name or keyword with downloadable PDF reports."},
+        {id:"news",icon:"news",color:"#8b5cf6",label:"Fetch News",desc:"Research any topic — get the latest news from multiple sources, broken down for easy reading."},
+        {id:"sighted",icon:"stamp",color:T.amber,label:"Sight Documents",desc:"Stamp customer documents as sighted — name, date, and signature — in bulk."}
       ].map((c,i)=>`
-      <div class="card-hover" onclick="state.page='${c.id}';render()" style="background:${T.surface};border:1px solid ${T.border};border-radius:14px;padding:22px;cursor:pointer;animation:fadeUp .35s ease ${i*.08}s both">
+      <div class="card-hover" onclick="state.page='${c.id}';render()" style="background:${T.surface};border:1px solid ${T.border};border-radius:14px;padding:20px;cursor:pointer;animation:fadeUp .35s ease ${i*.08}s both">
         <div style="width:42px;height:42px;border-radius:11px;margin-bottom:14px;background:${c.color}18;border:1px solid ${c.color}25;display:flex;align-items:center;justify-content:center">${icon(c.icon,20,c.color)}</div>
         <div style="font-size:14px;font-weight:600;color:${T.text};margin-bottom:8px">${c.label}</div>
         <p style="font-size:12px;color:${T.muted};line-height:1.7;margin-bottom:16px">${c.desc}</p>
@@ -424,7 +478,7 @@ function renderHome() {
     </div>
     <div style="margin-top:28px;padding:18px;border-radius:12px;background:${T.surface};border:1px solid ${T.border};display:flex;align-items:center;gap:14px">
       ${icon("info",18,T.primary)}
-      <p style="font-size:12px;color:${T.muted};line-height:1.6">All searches use live web data via the Anthropic API. Reports download as HTML files you can print or save. Documents are processed in your browser — nothing is uploaded.</p>
+      <p style="font-size:12px;color:${T.muted};line-height:1.6">All searches use live web data via the Anthropic API. Reports can be saved as PDF. Documents are processed in your browser — nothing is uploaded.</p>
     </div>`;
   return wrap;
 }
@@ -546,7 +600,7 @@ function renderAdverseResult(r) {
         <p style="font-size:11px;color:${T.muted};line-height:1.6">Search conducted against public web sources using compliance-grade adverse media search terms.</p>
       </div>` : ""}
       ${r.error?`<p style="font-size:13px;color:${T.red}">${r.error}</p>`:`
-      <p style="font-size:13px;color:${T.muted};line-height:1.7;margin-bottom:14px">${r.summary||r.raw||""}</p>
+      <p style="font-size:13px;color:${T.muted};line-height:1.7;margin-bottom:14px">${r.summary||""}</p>
       ${r.sources?.length?`<div style="font-size:11px;font-weight:600;color:${T.muted};letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Sources</div>
       ${r.sources.map(s=>`<div style="padding:10px 14px;border-radius:8px;background:${T.surface2};border:1px solid ${T.border};margin-bottom:8px">
         <a href="${s.url}" target="_blank" style="font-size:13px;font-weight:500;display:flex;gap:6px;align-items:center">${s.title} ${icon("external",11,T.primary)}</a>
@@ -639,7 +693,7 @@ function renderMediaResult(r) {
     </div>
     <div style="padding:14px 18px">
       ${r.error?`<p style="font-size:13px;color:${T.red}">${r.error}</p>`:`
-      <p style="font-size:13px;color:${T.muted};line-height:1.7;margin-bottom:14px">${r.summary||r.raw||""}</p>
+      <p style="font-size:13px;color:${T.muted};line-height:1.7;margin-bottom:14px">${r.summary||""}</p>
       ${r.highlights?.length?`<div style="margin-bottom:14px">${r.highlights.map(h=>`<div style="display:flex;gap:8px;font-size:12px;color:${T.muted};margin-bottom:6px"><span style="color:${T.primary}">›</span>${h}</div>`).join("")}</div>`:""}
       ${r.sources?.length?`<div style="font-size:11px;font-weight:600;color:${T.muted};letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Sources</div>
       ${r.sources.map(s=>`<div style="padding:10px 14px;border-radius:8px;background:${T.surface2};border:1px solid ${T.border};margin-bottom:8px">
@@ -655,17 +709,115 @@ function renderMediaResult(r) {
   return d;
 }
 
+// ─── FETCH NEWS ──────────────────────────────────────────────────────────────
+let newsResults = [];
+
+function renderNews() {
+  const wrap = el("div",{class:"fade-up",style:{maxWidth:"780px"}});
+  wrap.appendChild(pageHeader("news","Fetch News","Research any topic — get the latest news from multiple sources, broken down for easy reading.","#8b5cf6"));
+
+  const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"22px",marginBottom:"24px"}});
+  card.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">News Topics</div>`;
+  const ta = el("textarea",{placeholder:"e.g. News in the financial sector in Nigeria for the past 2 weeks\nLatest AI regulations in Europe\nCryptocurrency market developments this month",rows:4,style:{width:"100%",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"10px",padding:"12px 14px",color:T.text,fontSize:"13px",resize:"vertical",lineHeight:1.7}});
+  card.appendChild(ta);
+
+  const row = el("div",{style:{marginTop:"10px",display:"flex",alignItems:"center",justifyContent:"space-between"}});
+  row.innerHTML=`<p style="font-size:11px;color:${T.muted}">One topic per line. Be specific — include sector, region, and timeframe.</p>`;
+  const btnRow = el("div",{style:{display:"flex",gap:"8px"}});
+
+  const runBtn = makeBtn("Fetch News","search","primary","md",null);
+  runBtn.style.background="#8b5cf6";
+  runBtn.onclick = async () => {
+    const topics = ta.value.split("\n").map(n=>n.trim()).filter(Boolean);
+    if(!topics.length) return;
+    newsResults=[];
+    runBtn.disabled=true; runBtn.innerHTML=`<div class="spin" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%"></div> Fetching…`;
+    const progWrap=$("news-progress"); if(progWrap) progWrap.style.display="flex";
+    const resWrap=$("news-results"); resWrap.innerHTML="";
+
+    for(let i=0;i<topics.length;i++){
+      const topic=topics[i];
+      const pName=$("news-pname"); if(pName) pName.textContent=topic;
+      const pCount=$("news-pcount"); if(pCount) pCount.textContent=`${i+1} of ${topics.length}`;
+      const pBar=$("news-pbar"); if(pBar) pBar.style.width=`${((i+1)/topics.length)*100}%`;
+      try {
+        const data = await callAPI(`Find the latest news about: ${topic}. Search thoroughly across multiple news sources.`, NEWS_SYSTEM);
+        const r={topic,...data};
+        newsResults.push(r);
+        resWrap.appendChild(renderNewsResult(r));
+      } catch(e) {
+        const r={topic,error:e.message};
+        newsResults.push(r);
+        resWrap.appendChild(renderNewsResult(r));
+      }
+    }
+    if(progWrap) progWrap.style.display="none";
+    runBtn.disabled=false; runBtn.innerHTML=`${icon("search",14,"currentColor")} Fetch News`;
+    runBtn.style.background="#8b5cf6";
+  };
+  btnRow.appendChild(runBtn);
+  row.appendChild(btnRow);
+  card.appendChild(row);
+  wrap.appendChild(card);
+
+  // Progress
+  const prog = el("div",{id:"news-progress",style:{display:"none",background:T.surface,borderRadius:"12px",border:`1px solid ${T.border}`,padding:"16px 20px",marginBottom:"20px",alignItems:"center",gap:"14px"}});
+  prog.innerHTML=`<div class="spin" style="width:18px;height:18px;border:2px solid ${T.border};border-top-color:#8b5cf6;border-radius:50%;flex-shrink:0"></div>
+    <div><div style="font-size:13px;font-weight:600;color:${T.text}">Fetching: <span id="news-pname" style="color:#8b5cf6"></span></div><div id="news-pcount" style="font-size:11px;color:${T.muted};margin-top:3px"></div></div>
+    <div style="margin-left:auto;width:140px;height:4px;background:${T.border};border-radius:99px"><div id="news-pbar" style="height:100%;border-radius:99px;background:#8b5cf6;width:0%;transition:width .4s"></div></div>`;
+  wrap.appendChild(prog);
+
+  const res = el("div",{id:"news-results"});
+  if(newsResults.length) newsResults.forEach(r=>res.appendChild(renderNewsResult(r)));
+  wrap.appendChild(res);
+  return wrap;
+}
+
+function renderNewsResult(r) {
+  const d = el("div",{class:"slide-in card-hover",style:{background:T.surface,borderRadius:"12px",border:`1px solid ${T.border}`,marginBottom:"14px",overflow:"hidden"}});
+
+  let articlesHtml = "";
+  if(r.articles?.length) {
+    articlesHtml = r.articles.map((a,i)=>`
+      <div style="padding:12px 16px;border-radius:8px;background:${T.surface2};border:1px solid ${T.border};margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:${T.text};margin-bottom:3px">${a.title||""}</div>
+            <div style="font-size:10px;color:${T.muted}">${a.source||""} ${a.date?`· ${a.date}`:""}</div>
+          </div>
+          ${a.url?`<a href="${a.url}" target="_blank" style="flex-shrink:0;padding:4px 10px;border-radius:6px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.2);color:#8b5cf6;font-size:10px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px">${icon("external",10,"#8b5cf6")} Read</a>`:""}
+        </div>
+        <p style="font-size:12px;color:${T.muted};line-height:1.6">${a.summary||""}</p>
+        ${a.keyPoints?.length?`<div style="margin-top:6px">${a.keyPoints.map(kp=>`<div style="display:flex;gap:6px;font-size:11px;color:${T.muted};margin-bottom:3px"><span style="color:#8b5cf6">›</span>${kp}</div>`).join("")}</div>`:""}
+      </div>`).join("");
+  }
+
+  d.innerHTML=`
+    <div style="padding:12px 16px;border-bottom:1px solid ${T.border};display:flex;align-items:center;justify-content:space-between;background:${T.surface2}">
+      <div style="display:flex;align-items:center;gap:10px">${icon("news",15,"#8b5cf6")}<span style="font-weight:600;color:${T.text};font-size:14px">${r.topic||""}</span></div>
+      ${r.period?`<span style="padding:3px 10px;border-radius:99px;font-size:10px;font-weight:600;background:rgba(139,92,246,0.1);color:#8b5cf6">${r.period}</span>`:""}
+    </div>
+    <div style="padding:14px 16px">
+      ${r.error?`<p style="font-size:13px;color:${T.red}">${r.error}</p>`:`
+      ${r.overview?`<p style="font-size:13px;color:${T.muted};line-height:1.7;margin-bottom:14px;padding:10px 14px;background:rgba(139,92,246,0.05);border-left:3px solid #8b5cf6;border-radius:4px">${r.overview}</p>`:""}
+      ${r.articles?.length?`<div style="font-size:11px;font-weight:600;color:${T.muted};letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">${r.articles.length} Articles Found</div>${articlesHtml}`:""}
+      ${r.summary?`<p style="font-size:13px;color:${T.muted};line-height:1.7">${r.summary}</p>`:""}
+      `}
+    </div>`;
+  return d;
+}
+
 // ─── SIGHTED DOCUMENTS ────────────────────────────────────────────────────────
 let sightedState = { step:1, signerName:"", date:fmtShort(Date.now()), sigFormat:"typed-date", signatureData:null, uploadedSig:null, files:[], processed:[] };
 
 function renderSighted() {
   const s = sightedState;
   const wrap = el("div",{class:"fade-up",style:{maxWidth:"780px"}});
-  wrap.appendChild(pageHeader("stamp","Sighted Documents","Stamp customer documents as sighted with your name, date and signature — in bulk.",T.amber));
+  wrap.appendChild(pageHeader("stamp","Sight Documents","Stamp customer documents as sighted with your name, date and signature — in bulk.",T.amber));
 
   // Step indicator
   const steps=["Configure Stamp","Upload Documents","Download"];
-  const stepBar = el("div",{style:{display:"flex",alignItems:"center",gap:0,marginBottom:"28px"}});
+  const stepBar = el("div",{style:{display:"flex",alignItems:"center",gap:0,marginBottom:"18px"}});
   steps.forEach((label,i)=>{
     const done=s.step>i+1, active=s.step===i+1;
     const dot = el("div",{style:{display:"flex",alignItems:"center",gap:"8px",cursor:done?"pointer":"default"}});
@@ -817,7 +969,7 @@ function renderSightedStep2() {
   card.appendChild(fileIn);
 
   // Drop zone
-  const dropZone = el("div",{style:{border:`2px dashed ${T.border}`,borderRadius:"12px",padding:"32px 20px",textAlign:"center",cursor:"pointer",marginBottom:"20px",background:T.surface2,transition:"all .2s"}});
+  const dropZone = el("div",{style:{border:`2px dashed ${T.border}`,borderRadius:"12px",padding:"22px 18px",textAlign:"center",cursor:"pointer",marginBottom:"16px",background:T.surface2,transition:"all .2s"}});
   dropZone.innerHTML=`${icon("upload",28,T.muted)}<div style="font-size:14px;font-weight:600;color:${T.text};margin:10px 0 4px">Drop files here or click to browse</div><p style="font-size:12px;color:${T.muted}">Supports JPG, PNG, PDF — multiple files accepted</p>`;
   dropZone.onclick=()=>fileIn.click();
   dropZone.ondragover=e=>{e.preventDefault();dropZone.style.borderColor=T.amber;dropZone.style.background="rgba(245,158,11,0.04)"};
@@ -910,26 +1062,55 @@ async function processDocuments(files, s) {
 async function drawStamp(canvas, s) {
   const ctx=canvas.getContext("2d");
   const w=canvas.width, h=canvas.height;
-  const boxW=Math.min(360,w*0.45), boxH=s.sigFormat==="typed-only"?80:110;
-  const x=w-boxW-20, y=h-boxH-20;
-  ctx.shadowColor="rgba(0,0,0,0.15)"; ctx.shadowBlur=12; ctx.shadowOffsetX=2; ctx.shadowOffsetY=2;
-  ctx.fillStyle="rgba(255,255,255,0.96)"; ctx.fillRect(x,y,boxW,boxH);
+  const boxW=Math.min(280,w*0.35), boxH=s.sigFormat==="typed-only"?65:90;
+
+  // Scan for the best empty spot — check candidate positions for whiteness
+  function getAreaBrightness(x,y,bw,bh){
+    const data=ctx.getImageData(x,y,bw,bh).data;
+    let total=0, count=0;
+    for(let i=0;i<data.length;i+=16){total+=(data[i]+data[i+1]+data[i+2])/3;count++}
+    return total/count;
+  }
+
+  // Candidate positions: bottom-right, bottom-left, bottom-center, top-right
+  const margin=15;
+  const candidates=[
+    {x:w-boxW-margin, y:h-boxH-margin},
+    {x:margin, y:h-boxH-margin},
+    {x:(w-boxW)/2, y:h-boxH-margin},
+    {x:w-boxW-margin, y:margin},
+    {x:margin, y:margin},
+    {x:w-boxW-margin, y:h*0.6},
+    {x:margin, y:h*0.6},
+  ];
+
+  let bestPos=candidates[0], bestScore=0;
+  for(const pos of candidates){
+    const cx=Math.max(0,Math.min(pos.x,w-boxW));
+    const cy=Math.max(0,Math.min(pos.y,h-boxH));
+    const score=getAreaBrightness(cx,cy,Math.min(boxW,w-cx),Math.min(boxH,h-cy));
+    if(score>bestScore){bestScore=score;bestPos={x:cx,y:cy}}
+  }
+
+  const x=bestPos.x, y=bestPos.y;
+  ctx.shadowColor="rgba(0,0,0,0.12)"; ctx.shadowBlur=8; ctx.shadowOffsetX=1; ctx.shadowOffsetY=1;
+  ctx.fillStyle="rgba(255,255,255,0.95)"; ctx.fillRect(x,y,boxW,boxH);
   ctx.shadowColor="transparent";
-  ctx.strokeStyle="#1e3a8a"; ctx.lineWidth=2; ctx.strokeRect(x,y,boxW,boxH);
-  ctx.fillStyle="#1e3a8a"; ctx.fillRect(x,y,5,boxH);
-  const fs=Math.min(14,boxW/20);
-  ctx.fillStyle="#1e3a8a"; ctx.font=`bold ${fs}px Arial`; ctx.fillText("SIGHTED",x+14,y+22);
-  ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x+14,y+30); ctx.lineTo(x+boxW-14,y+30); ctx.stroke();
-  ctx.fillStyle="#1e293b"; ctx.font=`${Math.min(12,boxW/22)}px Arial`;
-  ctx.fillText(`By: ${s.signerName||"N/A"}`,x+14,y+46);
-  if(s.sigFormat!=="typed-only") ctx.fillText(`Date: ${s.date}`,x+14,y+62);
+  ctx.strokeStyle="#1e3a8a"; ctx.lineWidth=1.5; ctx.strokeRect(x,y,boxW,boxH);
+  ctx.fillStyle="#1e3a8a"; ctx.fillRect(x,y,4,boxH);
+  const fs=Math.min(12,boxW/22);
+  ctx.fillStyle="#1e3a8a"; ctx.font=`bold ${fs}px Arial`; ctx.fillText("SIGHTED",x+12,y+18);
+  ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=0.8; ctx.beginPath(); ctx.moveTo(x+12,y+24); ctx.lineTo(x+boxW-12,y+24); ctx.stroke();
+  ctx.fillStyle="#1e293b"; ctx.font=`${Math.min(10,boxW/24)}px Arial`;
+  ctx.fillText(`By: ${s.signerName||"N/A"}`,x+12,y+38);
+  if(s.sigFormat!=="typed-only") ctx.fillText(`Date: ${s.date}`,x+12,y+50);
   const sigData = s.sigFormat==="draw"?s.signatureData:s.sigFormat==="upload"?s.uploadedSig:null;
   if(sigData) {
     await new Promise(resolve=>{
-      const img=new Image(); img.onload=()=>{ctx.drawImage(img,x+14,y+70,boxW-28,32);resolve()}; img.onerror=resolve; img.src=sigData;
+      const img=new Image(); img.onload=()=>{ctx.drawImage(img,x+12,y+56,boxW-24,26);resolve()}; img.onerror=resolve; img.src=sigData;
     });
   } else if(s.sigFormat==="typed-only") {
-    ctx.font=`italic ${Math.min(13,boxW/22)}px Georgia`; ctx.fillStyle="#1e3a8a"; ctx.fillText(s.signerName||"",x+14,y+65);
+    ctx.font=`italic ${Math.min(11,boxW/24)}px Georgia`; ctx.fillStyle="#1e3a8a"; ctx.fillText(s.signerName||"",x+12,y+52);
   }
 }
 
@@ -942,11 +1123,21 @@ function renderSightedStep3() {
   hdr.innerHTML=`<div style="display:flex;align-items:center;gap:10px">${icon("check",18,T.green)}<span style="font-size:15px;font-weight:600;color:${T.text}">${s.processed.filter(p=>!p.error).length} document${s.processed.length>1?"s":""} stamped</span></div>`;
   const btnRow2 = el("div",{style:{display:"flex",gap:"8px"}});
   btnRow2.appendChild(makeBtn("Start Over","","ghost","md",()=>{sightedState={step:1,signerName:"",date:fmtShort(Date.now()),sigFormat:"typed-date",signatureData:null,uploadedSig:null,files:[],processed:[]};render()}));
-  btnRow2.appendChild(makeBtn("Download All","download","success","md",()=>s.processed.forEach(p=>{
-    if(p.error) return;
-    if(p.type==="image") dlFile(p.dataUrl,p.name);
-    else p.dataUrls.forEach((url,i)=>dlFile(url,`${p.name}_page${i+1}.png`));
-  })));
+  btnRow2.appendChild(makeBtn("Save as PDF","download","success","md",()=>{
+    const images = s.processed.filter(p=>!p.error);
+    if(!images.length) return;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sighted Documents</title>
+<style>@media print{@page{margin:5mm}body{margin:0;padding:0}} *{margin:0;padding:0;box-sizing:border-box} body{background:#fff} .page{page-break-after:always;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:10px} .page:last-child{page-break-after:auto} .page img{max-width:100%;max-height:95vh;object-fit:contain}
+.print-btn{position:fixed;top:10px;right:10px;padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;z-index:999} @media print{.print-btn{display:none!important}}
+</style></head><body><button class="print-btn" onclick="window.print()">📄 Save as PDF</button>
+${images.map(p=>{
+  if(p.type==="image") return `<div class="page"><img src="${p.dataUrl}"></div>`;
+  return p.dataUrls.map(url=>`<div class="page"><img src="${url}"></div>`).join("");
+}).join("")}
+<script>setTimeout(()=>{window.print()},800)</script></body></html>`;
+    const w = window.open("","_blank","width=900,height=700");
+    w.document.write(html); w.document.close();
+  }));
   hdr.appendChild(btnRow2);
   card.appendChild(hdr);
 
@@ -1000,13 +1191,13 @@ function makeBtn(label, iconName, variant="primary", size="md", onClick) {
 }
 
 function pageHeader(iconName, title, subtitle, color=T.primary) {
-  const wrap = el("div",{style:{marginBottom:"28px"}});
+  const wrap = el("div",{class:"page-hdr",style:{marginBottom:"18px"}});
   wrap.innerHTML=`
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
-      <div style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:${color}18;border:1px solid ${color}30">${icon(iconName,18,color)}</div>
-      <h1 style="font-size:22px;font-weight:700;color:${T.text};letter-spacing:-.03em">${title}</h1>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      <div style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:${color}18;border:1px solid ${color}30">${icon(iconName,16,color)}</div>
+      <h1 style="font-size:20px;font-weight:700;color:${T.text};letter-spacing:-.03em">${title}</h1>
     </div>
-    <p style="font-size:13px;color:${T.muted};padding-left:50px">${subtitle}</p>`;
+    <p style="font-size:12px;color:${T.muted};padding-left:44px">${subtitle}</p>`;
   return wrap;
 }
 
