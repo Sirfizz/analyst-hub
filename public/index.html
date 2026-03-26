@@ -116,6 +116,31 @@ const saveUser = name => {
 };
 const getUsers = () => JSON.parse(safeStorage.getItem("ah_users")||"[]");
 
+// ─── USAGE TRACKING ──────────────────────────────────────────────────────────
+const DAILY_LIMIT = 20;
+
+function getUsageKey(user) {
+  const today = new Date().toISOString().split("T")[0];
+  return `ah_usage_${user}_${today}`;
+}
+
+function getUsage(user) {
+  try { return JSON.parse(safeStorage.getItem(getUsageKey(user))||"0"); } catch { return 0; }
+}
+
+function addUsage(user) {
+  const current = getUsage(user);
+  safeStorage.setItem(getUsageKey(user), JSON.stringify(current + 1));
+}
+
+function canSearch(user) {
+  return getUsage(user) < DAILY_LIMIT;
+}
+
+function getRemainingSearches(user) {
+  return Math.max(0, DAILY_LIMIT - getUsage(user));
+}
+
 // ─── SVG ICONS ────────────────────────────────────────────────────────────────
 const ICONS = {
   home:`<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>`,
@@ -160,17 +185,23 @@ const MEDIA_SYSTEM = `You are a research analyst AI. Search the web for the give
 Return ONLY valid JSON (no markdown, no code fences, no extra text before or after):
 {"summary":"3-4 sentence factual overview","sentiment":"POSITIVE"|"NEUTRAL"|"NEGATIVE","highlights":["key finding 1","key finding 2","key finding 3"],"sources":[{"title":"source name","url":"https://url","snippet":"brief detail","type":"news"|"social"|"web"}]}`;
 
-const NEWS_SYSTEM = `You are a news research analyst. Search the web for the latest news on the given topic. Find recent articles from multiple sources and provide a comprehensive briefing.
+const NEWS_SYSTEM = `You are an elite news research analyst with deep expertise. Your job is to conduct thorough, detailed research on any topic the user provides. Search the web extensively and compile a comprehensive intelligence briefing.
 
-Return ONLY valid JSON (no markdown, no code fences, no extra text before or after):
-{"topic":"the topic searched","period":"time period covered","articles":[{"title":"article headline","source":"publication name","url":"https://url","date":"publication date","summary":"2-3 sentence summary of the article","keyPoints":["point 1","point 2"]}],"overview":"3-4 sentence overall summary of the news landscape on this topic"}`;
+Your research must be:
+- DETAILED: Each article summary should be 3-5 sentences, not just one line
+- COMPREHENSIVE: Find 5-8 different articles from diverse sources (major news outlets, industry publications, financial press, local media)
+- ANALYTICAL: Include your own analysis of trends, implications, and what this means for stakeholders
+- SOURCED: Every claim must link back to a specific source with a real URL
 
-async function callAPI(userMsg, systemMsg) {
+Return ONLY valid JSON (no markdown, no code fences, no extra text):
+{"topic":"the exact topic researched","period":"time period covered e.g. March 1-26 2026","overview":"A detailed 5-8 sentence executive summary that synthesizes all findings, identifies key themes and trends, and provides actionable insight. This should read like a professional intelligence briefing.","keyTrends":["trend 1 with detail","trend 2 with detail","trend 3 with detail"],"articles":[{"title":"full article headline","source":"publication name","url":"https://actual-url","date":"publication date","summary":"Detailed 3-5 sentence summary covering the who, what, why, and implications of this story","keyPoints":["specific detail 1","specific detail 2","specific detail 3"],"relevance":"Why this matters to the reader"}],"analystNote":"2-3 sentence forward-looking analysis — what to watch for next, potential implications, recommended actions"}`;
+
+async function callAPI(userMsg, systemMsg, maxTokens) {
   try {
     const res = await fetch("/api/search", {
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ userMsg, systemMsg })
+      body: JSON.stringify({ userMsg, systemMsg, maxTokens: maxTokens||1000 })
     });
     if(!res.ok) {
       const err = await res.json().catch(()=>({}));
@@ -314,14 +345,13 @@ function render() {
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function renderLogin() {
   const recentUsers = getUsers();
-  const wrap = el("div",{style:{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}});
+  const wrap = el("div",{style:{minHeight:"100vh",width:"100%",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}});
 
   // BG decoration
-  wrap.innerHTML += `<div style="position:absolute;inset:0;pointer-events:none;overflow:hidden">
-    <div style="position:absolute;top:-20%;left:-10%;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.08) 0%,transparent 70%)"></div>
-    <div style="position:absolute;bottom:-20%;right:-10%;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(59,130,246,0.06) 0%,transparent 70%)"></div>
-    <svg style="position:absolute;inset:0;width:100%;height:100%;opacity:.03"><defs><pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#3b82f6" stroke-width="1"/></pattern></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>
-  </div>`;
+  const bgDeco = el("div",{style:{position:"absolute",inset:"0",pointerEvents:"none",overflow:"hidden"}});
+  bgDeco.innerHTML = `<div style="position:absolute;top:-20%;left:-10%;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.08) 0%,transparent 70%)"></div>
+    <div style="position:absolute;bottom:-20%;right:-10%;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(59,130,246,0.06) 0%,transparent 70%)"></div>`;
+  wrap.appendChild(bgDeco);
 
   const card = el("div",{class:"fade-up",style:{width:"100%",maxWidth:"420px",padding:"0 20px",position:"relative",zIndex:1}});
 
@@ -446,7 +476,14 @@ function renderGreeting() {
   signout.onmouseover=()=>{signout.style.borderColor="rgba(239,68,68,.5)";signout.style.color=T.red};
   signout.onmouseout=()=>{signout.style.borderColor=T.border;signout.style.color=T.muted};
   signout.onclick=()=>{state.user=null;state.page="login";render()};
-  g.appendChild(signout);
+
+  const rightSide = el("div",{style:{display:"flex",alignItems:"center",gap:"10px"}});
+  const remaining = getRemainingSearches(state.user);
+  const usageBadge = el("div",{style:{padding:"6px 12px",borderRadius:"8px",background:remaining>5?T.primaryDim:remaining>0?"rgba(245,158,11,0.1)":T.redDim,border:`1px solid ${remaining>5?T.primary+"30":remaining>0?T.amber+"30":T.red+"30"}`,fontSize:"11px",fontWeight:600,color:remaining>5?T.primary:remaining>0?T.amber:T.red,fontFamily:T.mono,display:"flex",alignItems:"center",gap:"6px"}});
+  usageBadge.innerHTML=`${icon("search",12,remaining>5?T.primary:remaining>0?T.amber:T.red)} ${remaining}/${DAILY_LIMIT} searches left`;
+  rightSide.appendChild(usageBadge);
+  rightSide.appendChild(signout);
+  g.appendChild(rightSide);
   return g;
 }
 
@@ -504,6 +541,7 @@ function renderAdverse() {
   runBtn.onclick = async () => {
     const names = ta.value.split("\n").map(n=>n.trim()).filter(Boolean);
     if(!names.length) return;
+    if(!canSearch(state.user)) { alert(`Daily search limit reached (${DAILY_LIMIT} searches). Try again tomorrow.`); return; }
     adverseResults = [];
     runBtn.disabled=true; runBtn.innerHTML=`<div class="spin" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%"></div> Searching…`;
     const progWrap = $("adv-progress"); if(progWrap) progWrap.style.display="flex";
@@ -511,11 +549,13 @@ function renderAdverse() {
     resWrap.innerHTML="";
 
     for(let i=0;i<names.length;i++){
+      if(!canSearch(state.user)) { alert(`Daily limit reached. ${i} of ${names.length} names searched.`); break; }
       const name=names[i];
       const pName=$("adv-pname"); if(pName) pName.textContent=name;
       const pCount=$("adv-pcount"); if(pCount) pCount.textContent=`${i+1} of ${names.length}`;
       const pBar=$("adv-pbar"); if(pBar) pBar.style.width=`${((i+1)/names.length)*100}%`;
       try {
+        addUsage(state.user);
         const data = await callAPI(`Search for adverse media: "${name}" AND (${ADVERSE_TERMS})`, ADVERSE_SYSTEM);
         const r = {name,...data};
         adverseResults.push(r);
@@ -636,17 +676,20 @@ function renderMedia() {
   runBtn.onclick = async () => {
     const terms = ta.value.split("\n").map(n=>n.trim()).filter(Boolean);
     if(!terms.length) return;
+    if(!canSearch(state.user)) { alert(`Daily search limit reached (${DAILY_LIMIT} searches). Try again tomorrow.`); return; }
     mediaResults=[];
     runBtn.disabled=true; runBtn.innerHTML=`<div class="spin" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%"></div> Searching…`;
     const progWrap=$("med-progress"); if(progWrap) progWrap.style.display="flex";
     const resWrap=$("med-results"); resWrap.innerHTML="";
 
     for(let i=0;i<terms.length;i++){
+      if(!canSearch(state.user)) { alert(`Daily limit reached. ${i} of ${terms.length} terms searched.`); break; }
       const name=terms[i];
       const pName=$("med-pname"); if(pName) pName.textContent=name;
       const pCount=$("med-pcount"); if(pCount) pCount.textContent=`${i+1} of ${terms.length}`;
       const pBar=$("med-pbar"); if(pBar) pBar.style.width=`${((i+1)/terms.length)*100}%`;
       try {
+        addUsage(state.user);
         const data = await callAPI(`Search the web and social media for: ${name}`, MEDIA_SYSTEM);
         const r={name,...data};
         mediaResults.push(r);
@@ -727,18 +770,21 @@ function renderNews() {
   runBtn.onclick = async () => {
     const topics = ta.value.split("\n").map(n=>n.trim()).filter(Boolean);
     if(!topics.length) return;
+    if(!canSearch(state.user)) { alert(`Daily search limit reached (${DAILY_LIMIT} searches). Try again tomorrow.`); return; }
     newsResults=[];
     runBtn.disabled=true; runBtn.innerHTML=`<div class="spin" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%"></div> Fetching…`;
     const progWrap=$("news-progress"); if(progWrap) progWrap.style.display="flex";
     const resWrap=$("news-results"); resWrap.innerHTML="";
 
     for(let i=0;i<topics.length;i++){
+      if(!canSearch(state.user)) { alert(`Daily limit reached. ${i} of ${topics.length} topics fetched.`); break; }
       const topic=topics[i];
       const pName=$("news-pname"); if(pName) pName.textContent=topic;
       const pCount=$("news-pcount"); if(pCount) pCount.textContent=`${i+1} of ${topics.length}`;
       const pBar=$("news-pbar"); if(pBar) pBar.style.width=`${((i+1)/topics.length)*100}%`;
       try {
-        const data = await callAPI(`Find the latest news about: ${topic}. Search thoroughly across multiple news sources.`, NEWS_SYSTEM);
+        addUsage(state.user);
+        const data = await callAPI(`Conduct thorough research on: ${topic}. Search multiple news sources, financial publications, industry outlets, and mainstream media. Find at least 5-8 relevant articles. Provide detailed summaries, key points, source links, and your analysis.`, NEWS_SYSTEM, 2000);
         const r={topic,...data};
         newsResults.push(r);
         resWrap.appendChild(renderNewsResult(r));
@@ -776,16 +822,20 @@ function renderNewsResult(r) {
   let articlesHtml = "";
   if(r.articles?.length) {
     articlesHtml = r.articles.map((a,i)=>`
-      <div style="padding:12px 16px;border-radius:8px;background:${T.surface2};border:1px solid ${T.border};margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
+      <div style="padding:14px 16px;border-radius:8px;background:${T.surface2};border:1px solid ${T.border};margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px">
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:600;color:${T.text};margin-bottom:3px">${a.title||""}</div>
-            <div style="font-size:10px;color:${T.muted}">${a.source||""} ${a.date?`· ${a.date}`:""}</div>
+            <div style="font-size:14px;font-weight:600;color:${T.text};margin-bottom:4px;line-height:1.4">${a.title||""}</div>
+            <div style="font-size:10px;color:${T.muted};display:flex;gap:8px;align-items:center">
+              <span style="font-weight:600;color:#8b5cf6">${a.source||""}</span>
+              ${a.date?`<span>· ${a.date}</span>`:""}
+            </div>
           </div>
-          ${a.url?`<a href="${a.url}" target="_blank" style="flex-shrink:0;padding:4px 10px;border-radius:6px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.2);color:#8b5cf6;font-size:10px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px">${icon("external",10,"#8b5cf6")} Read</a>`:""}
+          ${a.url?`<a href="${a.url}" target="_blank" style="flex-shrink:0;padding:6px 12px;border-radius:6px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.2);color:#8b5cf6;font-size:11px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px">${icon("external",10,"#8b5cf6")} Read Full</a>`:""}
         </div>
-        <p style="font-size:12px;color:${T.muted};line-height:1.6">${a.summary||""}</p>
-        ${a.keyPoints?.length?`<div style="margin-top:6px">${a.keyPoints.map(kp=>`<div style="display:flex;gap:6px;font-size:11px;color:${T.muted};margin-bottom:3px"><span style="color:#8b5cf6">›</span>${kp}</div>`).join("")}</div>`:""}
+        <p style="font-size:12px;color:${T.muted};line-height:1.7;margin-bottom:8px">${a.summary||""}</p>
+        ${a.keyPoints?.length?`<div style="margin-bottom:6px">${a.keyPoints.map(kp=>`<div style="display:flex;gap:6px;font-size:11px;color:${T.muted};margin-bottom:4px;padding-left:8px;border-left:2px solid rgba(139,92,246,0.2)"><span>${kp}</span></div>`).join("")}</div>`:""}
+        ${a.relevance?`<div style="font-size:11px;color:#8b5cf6;font-weight:500;font-style:italic">→ ${a.relevance}</div>`:""}
       </div>`).join("");
   }
 
@@ -796,9 +846,20 @@ function renderNewsResult(r) {
     </div>
     <div style="padding:14px 16px">
       ${r.error?`<p style="font-size:13px;color:${T.red}">${r.error}</p>`:`
-      ${r.overview?`<p style="font-size:13px;color:${T.muted};line-height:1.7;margin-bottom:14px;padding:10px 14px;background:rgba(139,92,246,0.05);border-left:3px solid #8b5cf6;border-radius:4px">${r.overview}</p>`:""}
-      ${r.articles?.length?`<div style="font-size:11px;font-weight:600;color:${T.muted};letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">${r.articles.length} Articles Found</div>${articlesHtml}`:""}
-      ${r.summary?`<p style="font-size:13px;color:${T.muted};line-height:1.7">${r.summary}</p>`:""}
+      ${r.overview?`<div style="padding:14px 16px;background:rgba(139,92,246,0.05);border-left:3px solid #8b5cf6;border-radius:4px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:700;color:#8b5cf6;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Executive Summary</div>
+        <p style="font-size:13px;color:${T.text};line-height:1.7">${r.overview}</p>
+      </div>`:""}
+      ${r.keyTrends?.length?`<div style="margin-bottom:16px">
+        <div style="font-size:10px;font-weight:700;color:${T.muted};text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Key Trends</div>
+        ${r.keyTrends.map(t=>`<div style="display:flex;gap:8px;font-size:12px;color:${T.muted};margin-bottom:6px;line-height:1.5"><span style="color:#8b5cf6;font-weight:700;flex-shrink:0">▸</span><span>${t}</span></div>`).join("")}
+      </div>`:""}
+      ${r.articles?.length?`<div style="font-size:10px;font-weight:700;color:${T.muted};text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">${r.articles.length} Articles Found</div>${articlesHtml}`:""}
+      ${r.analystNote?`<div style="margin-top:14px;padding:12px 16px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">
+        <div style="font-size:10px;font-weight:700;color:${T.amber};text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">🔮 Analyst Note — What to Watch</div>
+        <p style="font-size:12px;color:${T.text};line-height:1.6">${r.analystNote}</p>
+      </div>`:""}
+      ${r.summary&&!r.overview?`<p style="font-size:13px;color:${T.muted};line-height:1.7">${r.summary}</p>`:""}
       `}
     </div>`;
   return d;

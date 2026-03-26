@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   if (!API_KEY) return res.status(500).json({ error: "API key not configured on server" });
 
   try {
-    const { userMsg, systemMsg } = req.body;
+    const { userMsg, systemMsg, maxTokens } = req.body;
     if (!userMsg || !systemMsg) return res.status(400).json({ error: "Missing userMsg or systemMsg" });
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
+        max_tokens: maxTokens || 1000,
         tools: [{ type: "web_search_20250305", name: "web_search" }],
         system: systemMsg,
         messages: [{ role: "user", content: userMsg }]
