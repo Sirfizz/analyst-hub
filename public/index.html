@@ -160,9 +160,10 @@ const MEDIA_SYSTEM = `You are a research analyst AI. Search the web for the give
 Return ONLY valid JSON (no markdown, no code fences, no extra text before or after):
 {"summary":"3-4 sentence factual overview","sentiment":"POSITIVE"|"NEUTRAL"|"NEGATIVE","highlights":["key finding 1","key finding 2","key finding 3"],"sources":[{"title":"source name","url":"https://url","snippet":"brief detail","type":"news"|"social"|"web"}]}`;
 
-async function callAPI(userMsg, systemMsg, maxTokens) {
+async function callAPI(userMsg, systemMsg, maxTokens, provider="claude") {
   try {
-    const res = await fetch("/api/search", {
+    const endpoint = provider === "gemini" ? "/api/gemini" : "/api/search";
+    const res = await fetch(endpoint, {
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ userMsg, systemMsg, maxTokens: maxTokens||1000 })
@@ -184,6 +185,24 @@ async function callAPI(userMsg, systemMsg, maxTokens) {
     throw e;
   }
 }
+
+// ─── AI SELECTOR ─────────────────────────────────────────────────────────────
+let selectedAI = "claude";
+
+function makeAISelector(onChange) {
+  const wrap = el("div",{style:{display:"flex",alignItems:"center",gap:"6px"}});
+  wrap.innerHTML=`<span style="font-size:10px;color:${T.muted};font-weight:600;text-transform:uppercase;letter-spacing:.05em">AI:</span>`;
+  const sel = el("select",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"6px",padding:"5px 8px",color:T.text,fontSize:"12px",fontFamily:"'Sora',sans-serif",cursor:"pointer",outline:"none"}});
+  sel.innerHTML=`<option value="claude" ${selectedAI==="claude"?"selected":""}>Claude (paid)</option><option value="gemini" ${selectedAI==="gemini"?"selected":""}>Gemini (free)</option>`;
+  sel.onchange=()=>{selectedAI=sel.value;if(onChange)onChange(sel.value)};
+  wrap.appendChild(sel);
+  return wrap;
+}
+
+const NEWS_SYSTEM = `You are an elite news research analyst. Search the web for the latest news on the given topic. Find recent articles from multiple sources and provide a comprehensive briefing.
+
+Return ONLY valid JSON (no markdown, no code fences, no extra text):
+{"topic":"the topic searched","period":"time period covered","overview":"4-6 sentence executive summary of findings","keyTrends":["trend 1","trend 2","trend 3"],"articles":[{"title":"article headline","source":"publication name","url":"https://url","date":"date","summary":"3-4 sentence detailed summary","keyPoints":["point 1","point 2"]}],"analystNote":"2-3 sentence forward-looking analysis"}`;
 
 // ─── GOOGLE VERIFICATION LINK BUILDER ─────────────────────────────────────────
 function buildVerifyLink(name) {
@@ -298,6 +317,7 @@ function render() {
   if(state.page==="home") main.appendChild(renderHome());
   else if(state.page==="adverse") main.appendChild(renderAdverse());
   else if(state.page==="media") main.appendChild(renderMedia());
+  else if(state.page==="news") main.appendChild(renderNews());
   else if(state.page==="sighted") main.appendChild(renderSighted());
   wrapper.appendChild(main);
   const credit = el("div",{style:{position:"fixed",bottom:"12px",right:"20px",fontSize:"10px",color:"rgba(100,116,139,0.4)",fontFamily:T.mono,letterSpacing:".05em",zIndex:10}}, "Desk of Mafia's Creatives");
@@ -393,6 +413,7 @@ const NAV = [
   {id:"home",label:"Home",icon:"home"},
   {id:"adverse",label:"Adverse Media",icon:"alert"},
   {id:"media",label:"Media Search",icon:"globe"},
+  {id:"news",label:"Fetch News",icon:"news"},
   {id:"sighted",label:"Sight Documents",icon:"stamp"},
 ];
 
@@ -451,10 +472,11 @@ function renderHome() {
       <h1 class="home-title" style="font-size:28px;font-weight:700;color:${T.text};letter-spacing:-.04em;margin-bottom:6px">Analyst Hub</h1>
       <p style="font-size:13px;color:${T.muted};line-height:1.6;max-width:520px">Your central workspace for compliance research and document management.</p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px" class="home-grid">
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px" class="home-grid">
       ${[
         {id:"adverse",icon:"alert",color:T.red,label:"Adverse Media Search",desc:"Run compliance-grade adverse media checks across multiple names and export flagged results."},
         {id:"media",icon:"globe",color:T.primary,label:"Media Search",desc:"General and social media searches for any name or keyword with downloadable PDF reports."},
+        {id:"news",icon:"news",color:"#8b5cf6",label:"Fetch News",desc:"Research any topic — get the latest news from multiple sources. Powered by Gemini (free)."},
         {id:"sighted",icon:"stamp",color:T.amber,label:"Sight Documents",desc:"Stamp customer documents as sighted — name, date, and signature — in bulk."}
       ].map((c,i)=>`
       <div class="card-hover" onclick="state.page='${c.id}';render()" style="background:${T.surface};border:1px solid ${T.border};border-radius:14px;padding:20px;cursor:pointer;animation:fadeUp .35s ease ${i*.08}s both">
@@ -479,17 +501,20 @@ function renderAdverse() {
   wrap.appendChild(pageHeader("alert","Adverse Media Search","Run compliance-grade adverse media checks across multiple names at once.",T.red));
 
   const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"22px",marginBottom:"24px"}});
-  card.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">Names / Entities</div>`;
+  card.appendChild(makeAISelector());
+  const namesLabel = el("div",{style:{fontSize:"12px",fontWeight:600,color:T.muted,marginBottom:"10px",textTransform:"uppercase",letterSpacing:".07em"}},"Names / Entities");
+  card.appendChild(namesLabel);
   const ta = el("textarea",{placeholder:"John Doe\nAcme Corporation\nJane Smith",rows:5,style:{width:"100%",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"10px",padding:"12px 14px",color:T.text,fontSize:"13px",resize:"vertical",lineHeight:1.7}});
   card.appendChild(ta);
 
   const row = el("div",{style:{marginTop:"10px",display:"flex",alignItems:"center",justifyContent:"space-between"}});
   row.innerHTML=`<p style="font-size:11px;color:${T.muted}">One name per line. Searches run sequentially.</p>`;
-  const btnRow = el("div",{style:{display:"flex",gap:"8px"}});
+  const btnRow = el("div",{style:{display:"flex",gap:"8px",alignItems:"center"}});
 
   const exportBtn = makeBtn("Export Report","download","ghost","sm",()=>exportToPDF(adverseResults,"adverse"));
   exportBtn.style.display = adverseResults.length?"inline-flex":"none";
   btnRow.appendChild(exportBtn);
+  btnRow.appendChild(makeAISelector());
 
   const runBtn = makeBtn("Run Search","search","primary","md",null);
   runBtn.onclick = async () => {
@@ -507,7 +532,7 @@ function renderAdverse() {
       const pCount=$("adv-pcount"); if(pCount) pCount.textContent=`${i+1} of ${names.length}`;
       const pBar=$("adv-pbar"); if(pBar) pBar.style.width=`${((i+1)/names.length)*100}%`;
       try {
-        const data = await callAPI(`Search for adverse media: "${name}" AND (${ADVERSE_TERMS})`, ADVERSE_SYSTEM);
+        const data = await callAPI(`Search for adverse media: "${name}" AND (${ADVERSE_TERMS})`, ADVERSE_SYSTEM, 1000, selectedAI);
         const r = {name,...data};
         adverseResults.push(r);
         resWrap.appendChild(renderAdverseResult(r));
@@ -611,17 +636,20 @@ function renderMedia() {
   wrap.appendChild(pageHeader("globe","Media Search","General and social media searches for names, entities, or keywords.",T.primary));
 
   const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"22px",marginBottom:"24px"}});
-  card.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">Search Terms</div>`;
+  card.appendChild(makeAISelector());
+  const termsLabel = el("div",{style:{fontSize:"12px",fontWeight:600,color:T.muted,marginBottom:"10px",textTransform:"uppercase",letterSpacing:".07em"}},"Search Terms");
+  card.appendChild(termsLabel);
   const ta = el("textarea",{placeholder:"John Doe\nAcme Corp LinkedIn\nJane Smith Twitter",rows:5,style:{width:"100%",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"10px",padding:"12px 14px",color:T.text,fontSize:"13px",resize:"vertical",lineHeight:1.7}});
   card.appendChild(ta);
 
   const row = el("div",{style:{marginTop:"10px",display:"flex",alignItems:"center",justifyContent:"space-between"}});
   row.innerHTML=`<p style="font-size:11px;color:${T.muted}">One name or keyword per line. Includes news and social media.</p>`;
-  const btnRow = el("div",{style:{display:"flex",gap:"8px"}});
+  const btnRow = el("div",{style:{display:"flex",gap:"8px",alignItems:"center"}});
 
   const exportBtn = makeBtn("Export Report","download","ghost","sm",()=>exportToPDF(mediaResults,"media"));
   exportBtn.style.display = mediaResults.length?"inline-flex":"none";
   btnRow.appendChild(exportBtn);
+  btnRow.appendChild(makeAISelector());
 
   const runBtn = makeBtn("Search","search","primary","md",null);
   runBtn.onclick = async () => {
@@ -638,7 +666,7 @@ function renderMedia() {
       const pCount=$("med-pcount"); if(pCount) pCount.textContent=`${i+1} of ${terms.length}`;
       const pBar=$("med-pbar"); if(pBar) pBar.style.width=`${((i+1)/terms.length)*100}%`;
       try {
-        const data = await callAPI(`Search the web and social media for: ${name}`, MEDIA_SYSTEM);
+        const data = await callAPI(`Search the web and social media for: ${name}`, MEDIA_SYSTEM, 1000, selectedAI);
         const r={name,...data};
         mediaResults.push(r);
         resWrap.appendChild(renderMediaResult(r));
@@ -693,6 +721,115 @@ function renderMediaResult(r) {
         <p style="font-size:11px;color:${T.muted};margin-bottom:6px">Click to verify this result on Google:</p>
         <a href="${verifyUrl}" target="_blank" style="font-size:11px;color:${T.primary};word-break:break-all;display:flex;align-items:center;gap:4px">${icon("external",11,T.primary)} Open Google Search for "${r.name}"</a>
       </div>
+    </div>`;
+  return d;
+}
+
+// ─── FETCH NEWS (Gemini only — free) ─────────────────────────────────────────
+let newsResults = [];
+
+function renderNews() {
+  const wrap = el("div",{class:"fade-up",style:{maxWidth:"780px"}});
+  wrap.appendChild(pageHeader("news","Fetch News","Research any topic — get the latest news from multiple sources. Powered by Gemini (free).","#8b5cf6"));
+
+  const card = el("div",{style:{background:T.surface,borderRadius:"14px",border:`1px solid ${T.border}`,padding:"22px",marginBottom:"24px"}});
+  card.innerHTML=`<div style="font-size:12px;font-weight:600;color:${T.muted};margin-bottom:10px;text-transform:uppercase;letter-spacing:.07em">News Topics</div>`;
+  const ta = el("textarea",{placeholder:"e.g. News in the financial sector in Nigeria for the past 2 weeks\nLatest AI regulations in Europe\nCryptocurrency market developments this month",rows:4,style:{width:"100%",background:T.surface2,border:`1px solid ${T.border}`,borderRadius:"10px",padding:"12px 14px",color:T.text,fontSize:"13px",resize:"vertical",lineHeight:1.7}});
+  card.appendChild(ta);
+
+  const row = el("div",{style:{marginTop:"10px",display:"flex",alignItems:"center",justifyContent:"space-between"}});
+  row.innerHTML=`<p style="font-size:11px;color:${T.muted}">One topic per line. Be specific — include sector, region, and timeframe.</p>`;
+  const btnRow = el("div",{style:{display:"flex",gap:"8px",alignItems:"center"}});
+  const gemBadge = el("div",{style:{padding:"4px 10px",borderRadius:"6px",background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.2)",fontSize:"10px",fontWeight:600,color:"#8b5cf6"}});
+  gemBadge.textContent="Gemini (free)";
+  btnRow.appendChild(gemBadge);
+
+  const runBtn = makeBtn("Fetch News","search","primary","md",null);
+  runBtn.style.background="#8b5cf6";
+  runBtn.onclick = async () => {
+    const topics = ta.value.split("\n").map(n=>n.trim()).filter(Boolean);
+    if(!topics.length) return;
+    newsResults=[];
+    runBtn.disabled=true; runBtn.innerHTML=`<div class="spin" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%"></div> Fetching…`;
+    const progWrap=$("news-progress"); if(progWrap) progWrap.style.display="flex";
+    const resWrap=$("news-results"); resWrap.innerHTML="";
+
+    for(let i=0;i<topics.length;i++){
+      const topic=topics[i];
+      const pName=$("news-pname"); if(pName) pName.textContent=topic;
+      const pCount=$("news-pcount"); if(pCount) pCount.textContent=`${i+1} of ${topics.length}`;
+      const pBar=$("news-pbar"); if(pBar) pBar.style.width=`${((i+1)/topics.length)*100}%`;
+      try {
+        const data = await callAPI(`Conduct thorough research on: ${topic}. Search multiple news sources. Find at least 5 relevant articles. Provide detailed summaries, key points, and source links.`, NEWS_SYSTEM, 2000, "gemini");
+        const r={topic,...data};
+        newsResults.push(r);
+        resWrap.appendChild(renderNewsResult(r));
+      } catch(e) {
+        const r={topic,error:e.message};
+        newsResults.push(r);
+        resWrap.appendChild(renderNewsResult(r));
+      }
+    }
+    if(progWrap) progWrap.style.display="none";
+    runBtn.disabled=false; runBtn.innerHTML=`${icon("search",14,"currentColor")} Fetch News`;
+    runBtn.style.background="#8b5cf6";
+  };
+  btnRow.appendChild(runBtn);
+  row.appendChild(btnRow);
+  card.appendChild(row);
+  wrap.appendChild(card);
+
+  const prog = el("div",{id:"news-progress",style:{display:"none",background:T.surface,borderRadius:"12px",border:`1px solid ${T.border}`,padding:"16px 20px",marginBottom:"20px",alignItems:"center",gap:"14px"}});
+  prog.innerHTML=`<div class="spin" style="width:18px;height:18px;border:2px solid ${T.border};border-top-color:#8b5cf6;border-radius:50%;flex-shrink:0"></div>
+    <div><div style="font-size:13px;font-weight:600;color:${T.text}">Fetching: <span id="news-pname" style="color:#8b5cf6"></span></div><div id="news-pcount" style="font-size:11px;color:${T.muted};margin-top:3px"></div></div>
+    <div style="margin-left:auto;width:140px;height:4px;background:${T.border};border-radius:99px"><div id="news-pbar" style="height:100%;border-radius:99px;background:#8b5cf6;width:0%;transition:width .4s"></div></div>`;
+  wrap.appendChild(prog);
+
+  const res = el("div",{id:"news-results"});
+  if(newsResults.length) newsResults.forEach(r=>res.appendChild(renderNewsResult(r)));
+  wrap.appendChild(res);
+  return wrap;
+}
+
+function renderNewsResult(r) {
+  const d = el("div",{class:"slide-in card-hover",style:{background:T.surface,borderRadius:"12px",border:`1px solid ${T.border}`,marginBottom:"14px",overflow:"hidden"}});
+  let articlesHtml = "";
+  if(r.articles?.length) {
+    articlesHtml = r.articles.map(a=>`
+      <div style="padding:12px 14px;border-radius:8px;background:${T.surface2};border:1px solid ${T.border};margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:${T.text};margin-bottom:3px;line-height:1.4">${a.title||""}</div>
+            <div style="font-size:10px;color:${T.muted}"><span style="font-weight:600;color:#8b5cf6">${a.source||""}</span>${a.date?` · ${a.date}`:""}</div>
+          </div>
+          ${a.url?`<a href="${a.url}" target="_blank" style="flex-shrink:0;padding:5px 10px;border-radius:6px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.2);color:#8b5cf6;font-size:10px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px">${icon("external",10,"#8b5cf6")} Read</a>`:""}
+        </div>
+        <p style="font-size:12px;color:${T.muted};line-height:1.6">${a.summary||""}</p>
+        ${a.keyPoints?.length?`<div style="margin-top:6px">${a.keyPoints.map(kp=>`<div style="display:flex;gap:6px;font-size:11px;color:${T.muted};margin-bottom:3px;padding-left:8px;border-left:2px solid rgba(139,92,246,0.2)"><span>${kp}</span></div>`).join("")}</div>`:""}
+      </div>`).join("");
+  }
+  d.innerHTML=`
+    <div style="padding:12px 16px;border-bottom:1px solid ${T.border};display:flex;align-items:center;justify-content:space-between;background:${T.surface2}">
+      <div style="display:flex;align-items:center;gap:10px">${icon("news",15,"#8b5cf6")}<span style="font-weight:600;color:${T.text};font-size:14px">${r.topic||""}</span></div>
+      ${r.period?`<span style="padding:3px 10px;border-radius:99px;font-size:10px;font-weight:600;background:rgba(139,92,246,0.1);color:#8b5cf6">${r.period}</span>`:""}
+    </div>
+    <div style="padding:14px 16px">
+      ${r.error?`<p style="font-size:13px;color:${T.red}">${r.error}</p>`:`
+      ${r.overview?`<div style="padding:12px 14px;background:rgba(139,92,246,0.05);border-left:3px solid #8b5cf6;border-radius:4px;margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;color:#8b5cf6;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">Executive Summary</div>
+        <p style="font-size:13px;color:${T.text};line-height:1.7">${r.overview}</p>
+      </div>`:""}
+      ${r.keyTrends?.length?`<div style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;color:${T.muted};text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Key Trends</div>
+        ${r.keyTrends.map(t=>`<div style="display:flex;gap:8px;font-size:12px;color:${T.muted};margin-bottom:4px;line-height:1.5"><span style="color:#8b5cf6;font-weight:700">▸</span><span>${t}</span></div>`).join("")}
+      </div>`:""}
+      ${r.articles?.length?`<div style="font-size:10px;font-weight:700;color:${T.muted};text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">${r.articles.length} Articles Found</div>${articlesHtml}`:""}
+      ${r.analystNote?`<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">
+        <div style="font-size:10px;font-weight:700;color:${T.amber};text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">🔮 What to Watch</div>
+        <p style="font-size:12px;color:${T.text};line-height:1.6">${r.analystNote}</p>
+      </div>`:""}
+      ${r.summary&&!r.overview?`<p style="font-size:13px;color:${T.muted};line-height:1.7">${r.summary}</p>`:""}
+      `}
     </div>`;
   return d;
 }
@@ -1067,6 +1204,27 @@ function dlFile(dataUrl, filename) {
 }
 
 // ─── SHARED UI HELPERS ────────────────────────────────────────────────────────
+let selectedAI = "claude";
+
+function makeAISelector() {
+  const wrap = el("div",{style:{display:"flex",alignItems:"center",gap:"6px",marginBottom:"14px"}});
+  wrap.innerHTML=`<span style="font-size:11px;font-weight:600;color:${T.muted};text-transform:uppercase;letter-spacing:.07em">AI Engine</span>`;
+  const opts = [
+    {id:"claude",label:"Claude",color:T.primary,desc:"Best quality · Paid"},
+    {id:"gemini",label:"Gemini",color:T.green,desc:"Free tier · Good"}
+  ];
+  const pills = el("div",{style:{display:"flex",gap:"6px"}});
+  opts.forEach(o=>{
+    const active = selectedAI===o.id;
+    const btn = el("button",{style:{padding:"6px 14px",borderRadius:"20px",border:`1px solid ${active?o.color:T.border}`,background:active?o.color+"18":"transparent",color:active?o.color:T.muted,fontSize:"12px",fontWeight:active?600:400,cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all .15s",display:"flex",alignItems:"center",gap:"6px"}});
+    btn.innerHTML=`<div style="width:8px;height:8px;border-radius:50%;background:${o.color}"></div>${o.label} <span style="font-size:9px;color:${T.muted};font-weight:400">${o.desc}</span>`;
+    btn.onclick=()=>{selectedAI=o.id;render()};
+    pills.appendChild(btn);
+  });
+  wrap.appendChild(pills);
+  return wrap;
+}
+
 function makeBtn(label, iconName, variant="primary", size="md", onClick) {
   const variants={
     primary:{background:T.primary,color:"#fff",border:"none"},
